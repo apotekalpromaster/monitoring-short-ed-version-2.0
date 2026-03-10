@@ -125,6 +125,87 @@
     opacity: 1;
 }
 
+/* ── Sidebar: Sub Nav (Accordion) ── */
+.navGroup {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.navItemOpen {
+    background: rgba(15, 23, 42, 0.04);
+}
+
+.navSubMenu {
+    display: flex;
+    flex-direction: column;
+    padding-left: 28px;
+    margin-top: 4px;
+    gap: 4px;
+    animation: slideDown 0.2s ease-out;
+    transform-origin: top;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: scaleY(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scaleY(1);
+    }
+}
+
+.navSubItem {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.825rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: all 0.2s var(--ease-out);
+    position: relative;
+}
+
+.navSubItem::before {
+    content: '';
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--border-strong);
+    transition: background 0.2s;
+}
+
+.navSubItem:hover {
+    color: var(--text-main);
+    background: rgba(15, 23, 42, 0.03);
+}
+
+.navSubItem:hover::before {
+    background: var(--text-sub);
+}
+
+.navSubItem.active {
+    color: var(--primary);
+    font-weight: 600;
+    background: transparent;
+}
+
+.navSubItem.active::before {
+    background: var(--primary);
+    width: 6px;
+    height: 6px;
+    left: -13px;
+}
+
 /* ── Sidebar: User Profile ── */
 .userProfile {
     padding: 14px 16px;

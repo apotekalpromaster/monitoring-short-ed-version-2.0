@@ -7,10 +7,15 @@
 
 /* ── CSS Variables ── */
 :root {
-    /* Color Palette */
-    --primary: #2563eb;
-    --primary-hover: #1d4ed8;
-    --primary-light: #eff6ff;
+    /* ── Brand: Apotek Alpro — Orange Palette ── */
+    --primary: #F97316;
+    --primary-dark: #C2410C;
+    --primary-hover: #EA580C;
+    --primary-light: #FFF7ED;
+    --blue: #3b82f6;
+    --blue-light: #eff6ff;
+
+    /* Semantic */
     --danger: #dc2626;
     --danger-light: #fef2f2;
     --success: #16a34a;
@@ -18,16 +23,21 @@
     --warning: #d97706;
 
     /* Surfaces */
-    --bg: #f8faff;
+    --bg: #fafaf9;
     --surface: #ffffff;
-    --surface-elevated: rgba(255, 255, 255, 0.85);
-    --border: rgba(15, 23, 42, 0.08);
-    --border-focus: rgba(37, 99, 235, 0.35);
+    --surface-raised: #f5f5f4;
+    --surface-elevated: rgba(255, 255, 255, 0.9);
+    --border: rgba(15, 23, 42, 0.09);
+    --border-light: rgba(15, 23, 42, 0.05);
+    --border-strong: rgba(15, 23, 42, 0.18);
+    --border-focus: rgba(249, 115, 22, 0.35);
 
     /* Text */
-    --text-main: #0f172a;
-    --text-sub: #475569;
-    --text-muted: #94a3b8;
+    --text-main: #1c1917;
+    --text-primary: #1c1917;
+    --text-sub: #57534e;
+    --text-secondary: #78716c;
+    --text-muted: #a8a29e;
     --text-on-primary: #ffffff;
 
     /* Shadows */
@@ -197,13 +207,26 @@ small {
 .btn-primary {
     background: var(--primary);
     color: var(--text-on-primary);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.30);
 }
 
 .btn-primary:hover:not(:disabled) {
     background: var(--primary-hover);
-    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
+    box-shadow: 0 6px 20px rgba(249, 115, 22, 0.40);
     transform: translateY(-1px);
+}
+
+/* Variant: Outline */
+.btn-outline {
+    background: var(--surface);
+    color: var(--text-sub);
+    border: 1.5px solid var(--border);
+}
+
+.btn-outline:hover:not(:disabled) {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
 }
 
 .btn-primary:disabled {
@@ -294,4 +317,64 @@ small {
 
 .fade-up {
     animation: fadeUp 0.35s var(--ease-out) both;
+}
+
+/* ── Skeleton Loader ── */
+@keyframes skeletonPulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+.skeleton {
+    background: var(--surface-raised);
+    border-radius: 8px;
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-text {
+    height: 14px;
+    border-radius: 4px;
+    background: var(--surface-raised);
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-card {
+    height: 100px;
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+    border: 1px solid var(--border);
+}
+
+.skeleton-row {
+    height: 48px;
+    border-radius: 6px;
+    background: var(--surface-raised);
+    animation: skeletonPulse 1.5s ease-in-out infinite;
+    margin-bottom: 8px;
+}
+
+/* ── Responsive Table Scroll ── */
+.table-scroll-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ── Mobile Touch Friendly Buttons ── */
+@media (max-width: 640px) {
+    .btn {
+        min-height: 44px;
+    }
+
+    .input-field {
+        height: 44px;
+    }
 }

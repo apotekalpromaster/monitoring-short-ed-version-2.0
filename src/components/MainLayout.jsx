@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
     ScanLine, ClipboardPen, Activity,
     LayoutDashboard, PackageSearch,
-    LogOut, Menu, X, Building2,
+    LogOut, Menu, X, ChevronDown
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import styles from './MainLayout.module.css';
@@ -23,10 +23,24 @@ const NAV_CONFIG = {
         { to: '/outlet/monitoring', icon: Activity, label: 'Monitoring Produk ED' },
     ],
     PROCUREMENT: [
-        { to: '/procurement', icon: PackageSearch, label: 'Menu Procurement' },
+        {
+            label: 'Menu Procurement',
+            icon: PackageSearch,
+            subItems: [
+                { to: '/procurement/overview', label: 'Dashboard Analitik' },
+                { to: '/procurement/data', label: 'Data Stok (Batching)' }
+            ]
+        },
     ],
     BOD: [
-        { to: '/procurement', icon: PackageSearch, label: 'Menu Procurement' },
+        {
+            label: 'Menu Procurement',
+            icon: PackageSearch,
+            subItems: [
+                { to: '/procurement/overview', label: 'Dashboard Analitik' },
+                { to: '/procurement/data', label: 'Data Stok (Batching)' }
+            ]
+        },
         { to: '/bod', icon: LayoutDashboard, label: 'Dashboard BOD' },
     ],
     AM: [
@@ -49,6 +63,7 @@ export default function MainLayout() {
     const navigate = useNavigate();
     const { user, logout } = useAuthStore();
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [openSubMenus, setOpenSubMenus] = useState({});
 
     const navItems = NAV_CONFIG[user?.role] || [];
 
@@ -68,10 +83,13 @@ export default function MainLayout() {
         <>
             {/* Branding */}
             <div className={styles.brand}>
-                <div className={styles.brandIcon}>
-                    <Building2 size={18} color="white" strokeWidth={2.5} />
-                </div>
-                <div>
+                <img
+                    src="/alpro-logo.png"
+                    alt="Apotek Alpro"
+                    style={{ maxHeight: '40px', width: 'auto', objectFit: 'contain', display: 'block' }}
+                />
+                {/* Fallback if logo fails to load */}
+                <div style={{ display: 'none', flexDirection: 'column' }}>
                     <div className={styles.brandName}>Alpro Short ED</div>
                     <div className={styles.brandTagline}>Monitoring v2.0</div>
                 </div>
@@ -80,20 +98,57 @@ export default function MainLayout() {
             {/* Navigation */}
             <nav className={styles.nav} role="navigation">
                 <span className={styles.navLabel}>Menu</span>
-                {navItems.map(({ to, icon: Icon, label }) => (
-                    <NavLink
-                        key={to}
-                        to={to}
-                        end
-                        onClick={closeSidebar}
-                        className={({ isActive }) =>
-                            `${styles.navItem}${isActive ? ` ${styles.active}` : ''}`
-                        }
-                    >
-                        <Icon className={styles.navIcon} size={16} strokeWidth={2} />
-                        {label}
-                    </NavLink>
-                ))}
+                {navItems.map((item) => {
+                    const { to, icon: Icon, label, subItems } = item;
+
+                    if (subItems) {
+                        const isOpen = openSubMenus[label];
+                        return (
+                            <div key={label} className={styles.navGroup}>
+                                <button
+                                    className={`${styles.navItem} ${isOpen ? styles.navItemOpen : ''}`}
+                                    onClick={() => setOpenSubMenus(prev => ({ ...prev, [label]: !prev[label] }))}
+                                >
+                                    <Icon className={styles.navIcon} size={16} strokeWidth={2} />
+                                    {label}
+                                    <ChevronDown size={14} className={styles.navChevron} style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+                                </button>
+                                {isOpen && (
+                                    <div className={styles.navSubMenu}>
+                                        {subItems.map((sub) => (
+                                            <NavLink
+                                                key={sub.to}
+                                                to={sub.to}
+                                                end
+                                                onClick={closeSidebar}
+                                                className={({ isActive }) =>
+                                                    `${styles.navSubItem}${isActive ? ` ${styles.active}` : ''}`
+                                                }
+                                            >
+                                                {sub.label}
+                                            </NavLink>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <NavLink
+                            key={to}
+                            to={to}
+                            end
+                            onClick={closeSidebar}
+                            className={({ isActive }) =>
+                                `${styles.navItem}${isActive ? ` ${styles.active}` : ''}`
+                            }
+                        >
+                            <Icon className={styles.navIcon} size={16} strokeWidth={2} />
+                            {label}
+                        </NavLink>
+                    );
+                })}
             </nav>
 
             {/* User Profile + Logout */}
@@ -140,7 +195,11 @@ export default function MainLayout() {
                     >
                         {drawerOpen ? <X size={20} /> : <Menu size={20} />}
                     </button>
-                    <span className={styles.mobileTitle}>Alpro Short ED</span>
+                    <img
+                        src="/alpro-logo.png"
+                        alt="Apotek Alpro"
+                        style={{ maxHeight: '32px', width: 'auto', objectFit: 'contain', display: 'block' }}
+                    />
                 </header>
 
                 <main className={styles.content}>

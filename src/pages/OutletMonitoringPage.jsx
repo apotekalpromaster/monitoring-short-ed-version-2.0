@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { fetchOutletStocks, updateStockEntry, saveBulkStockEntries } from '../services/outletService';
+import { supabase } from '../services/supabaseClient';
 import styles from './OutletInputPage.module.css';
 
 import { getEdCategory, formatDate, monthsUntilED, getRekomendasi, CATEGORIES } from '../utils/edHelpers';
@@ -27,6 +28,7 @@ export default function OutletMonitoringPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [lastUpdated, setLastUpdated] = useState(null);
+    const [excludedCodes, setExcludedCodes] = useState(new Set());
 
     // Default terbuka: Kategori teratas (biasanya ED Bulan Berjalan, atau 1-3 jika Kosong)
     // Disimpan sebagai objek boolean: { 'bulanIni': true, '1to3': false ... }
@@ -102,9 +104,16 @@ export default function OutletMonitoringPage() {
         setLoading(true);
         setError(null);
         try {
-            const data = await fetchOutletStocks(user.code);
+            const [data, excludeRes] = await Promise.all([
+                fetchOutletStocks(user.code),
+                supabase.from('procode_exclude').select('product_code')
+            ]);
             setStocks(data);
             setLastUpdated(new Date());
+
+            if (!excludeRes.error && excludeRes.data) {
+                setExcludedCodes(new Set(excludeRes.data.map(r => String(r.product_code).trim())));
+            }
 
             // Auto-open arkodeon yang memiliki isi paling mendesak
             const groupedCounts = {};
@@ -541,7 +550,7 @@ export default function OutletMonitoringPage() {
                                                         )}
                                                     </td>
                                                     <td style={{ fontSize: '0.85rem', whiteSpace: 'normal', wordBreak: 'break-word', minWidth: '150px' }}>
-                                                        {getRekomendasi(s, cat.key)}
+                                                        {getRekomendasi(s, cat.key, excludedCodes)}
                                                     </td>
                                                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                         {isEditing ? (

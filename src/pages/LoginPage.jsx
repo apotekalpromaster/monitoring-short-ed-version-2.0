@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, AlertCircle, Building2 } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import useAuthStore from '../store/authStore';
 import styles from './LoginPage.module.css';
@@ -151,7 +151,11 @@ export default function LoginPage() {
                 {/* ── Header ── */}
                 <div className={styles.header}>
                     <div className={styles.logoMark}>
-                        <Building2 size={26} color="white" strokeWidth={2.5} />
+                        <img
+                            src="/alpro-logo.png"
+                            alt="Apotek Alpro"
+                            style={{ height: '52px', width: 'auto', objectFit: 'contain' }}
+                        />
                     </div>
                     <h1 className={styles.title}>Alpro Short ED</h1>
                     <p className={styles.subtitle}>Sistem Monitoring Stok Expired Date Pendek</p>

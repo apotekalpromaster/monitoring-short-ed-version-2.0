@@ -1,16 +1,42 @@
-import { useState, useEffect, useMemo } from 'react';
-import { PackageSearch, Search, SlidersHorizontal, Loader2, Inbox, FileDown, TableProperties, BarChart3, TrendingDown, CheckSquare, X } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { PackageSearch, Search, SlidersHorizontal, Loader2, FileDown, CheckSquare, X, ChevronDown } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { fetchAllProcurementStocks } from '../services/procurementService';
 import { supabase } from '../services/supabaseClient';
 import { getEdCategory, formatDate, CATEGORIES } from '../utils/edHelpers';
+import { DashboardSkeleton } from '../components/SkeletonLoader';
 import styles from './Dashboard.module.css';
 import OutletInputStyles from './OutletInputPage.module.css';
 
 const formatCurrency = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
-const formatShortNum = (n) => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n;
+const formatNum = (n) => Number(n || 0).toFixed(2);
 
-export default function DashboardProcurement() {
+// === CSV HELPER ===
+const csvCell = (val) => {
+    const str = String(val === null || val === undefined ? '' : val);
+    // Wrap in quotes if contains comma, newline, or double-quote
+    if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+        return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+};
+// Excel-safe for numeric strings with leading zeros
+const csvCodeCell = (val) => `"=""${String(val || '')}"""`;
+
+const triggerDownload = (csvContent, filename) => {
+    // BOM for Excel UTF-8 support
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+};
+
+export default function ProcurementData() {
     const user = useAuthStore((s) => s.user);
 
     const [stocks, setStocks] = useState([]);
@@ -25,8 +51,11 @@ export default function DashboardProcurement() {
     const [selectedProcId, setSelectedProcId] = useState('');
     const [isRounding, setIsRounding] = useState(false); // Opsi Pembulatan
 
+    // Procode Exclude Set — kode produk yang tidak boleh mendapat opsi "Diskon Promosi Khusus"
+    const [excludedCodes, setExcludedCodes] = useState(new Set());
+
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 100;
+    const itemsPerPage = 50; // reduced to 50 for snappier dom
 
     // Multi-Selection State
     const [selectedRows, setSelectedRows] = useState([]);
@@ -37,10 +66,28 @@ export default function DashboardProcurement() {
     const [actionDetails, setActionDetails] = useState({});
     const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
-    // Hover States for SVG Tooltips
-    const [hoveredPie, setHoveredPie] = useState(null);
-    const [hoveredCombo, setHoveredCombo] = useState(null);
-    const [hoveredBar, setHoveredBar] = useState(null);
+    // Export States
+    const [isExportingDetail, setIsExportingDetail] = useState(false);
+    const [isExportingRekap, setIsExportingRekap] = useState(false);
+    const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+    const [toast, setToast] = useState(null); // { message, type }
+    const exportDropdownRef = useRef(null);
+
+    const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3500);
+    };
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handler = (e) => {
+            if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target)) {
+                setExportDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
 
     useEffect(() => {
         loadData();
@@ -50,16 +97,21 @@ export default function DashboardProcurement() {
         setLoading(true);
         setError('');
         try {
-            const data = await fetchAllProcurementStocks();
-            setStocks(data);
+            const [stocks, excludeRes] = await Promise.all([
+                fetchAllProcurementStocks(),
+                supabase.from('procode_exclude').select('product_code')
+            ]);
+            setStocks(stocks);
+            if (!excludeRes.error && excludeRes.data) {
+                setExcludedCodes(new Set(excludeRes.data.map(r => String(r.product_code).trim())));
+            }
         } catch (err) {
-            setError('Gagal memuat data Procurement: ' + err.message);
+            setError('Gagal memuat data: ' + err.message);
         } finally {
             setLoading(false);
         }
     }
 
-    // Ekstrak Opsi Filter
     const filterOptions = useMemo(() => {
         const outletSet = new Set();
         const supSet = new Set();
@@ -79,7 +131,6 @@ export default function DashboardProcurement() {
         };
     }, [stocks]);
 
-    // Aplikasikan Filter & Pembulatan
     const filteredData = useMemo(() => {
         return stocks.reduce((acc, item) => {
             if (selectedCategory && getEdCategory(item.ed_date) !== selectedCategory) return acc;
@@ -88,7 +139,6 @@ export default function DashboardProcurement() {
             if (selectedSupplier && vendor !== selectedSupplier) return acc;
             if (selectedProcId && item.master_products?.procurement_id !== selectedProcId) return acc;
 
-            // 1. Sesuai request, filter out item yang sudah ditarik (terkumpul) dari tabel Procurement
             if (getEdCategory(item.ed_date) === 'terkumpul') return acc;
 
             if (searchQuery) {
@@ -98,13 +148,10 @@ export default function DashboardProcurement() {
                 if (!code.includes(q) && !name.includes(q)) return acc;
             }
 
-            // Opsi Pembulatan (misal qty desimal 0.9 -> 0, dihilangkan dari tabel logis)
             const rawQty = parseFloat(item.qty) || 0;
             const displayQty = isRounding ? Math.floor(rawQty) : rawQty;
+            if (displayQty > 0) acc.push({ ...item, qty: displayQty });
 
-            if (displayQty > 0) {
-                acc.push({ ...item, qty: displayQty });
-            }
             return acc;
         }, []);
     }, [stocks, searchQuery, selectedOutlet, selectedCategory, selectedSupplier, selectedProcId, isRounding]);
@@ -113,16 +160,14 @@ export default function DashboardProcurement() {
         setCurrentPage(1);
     }, [searchQuery, selectedOutlet, selectedCategory, selectedSupplier, selectedProcId, isRounding]);
 
-    // ----------------------------------------------------
-    // AGREGASI DATA PROCUREMENT (GROUP BY BARCODE)
-    // ----------------------------------------------------
+    // Group By Barcode
     const aggregatedData = useMemo(() => {
         const grouped = {};
         filteredData.forEach(item => {
             const pCode = item.product_code;
             if (!grouped[pCode]) {
                 grouped[pCode] = {
-                    id: pCode, // use product code as unique table row id
+                    id: pCode,
                     product_code: pCode,
                     itemName: item.master_products?.item_description || 'Unknown Item',
                     supplierInfo: `${item.master_products?.procurement_id || '-'} - ${item.master_products?.supplier || item.master_products?.supplier_name || 'Tanpa Supplier'}`,
@@ -131,9 +176,8 @@ export default function DashboardProcurement() {
                     batches: new Set(),
                     totalQty: 0,
                     outlets: new Set(),
-                    // Prioritize unit_cost_with_vat as requested by user
                     unitCost: Number(item.master_products?.unit_cost_with_vat) || 0,
-                    status_action: item.status_action || ''
+                    rekomendasi: item.rekomendasi || item.status_action || ''
                 };
             }
             const g = grouped[pCode];
@@ -142,7 +186,8 @@ export default function DashboardProcurement() {
             if (item.batch_id) g.batches.add(item.batch_id);
             g.totalQty += item.qty;
             g.outlets.add(item.outlet_code);
-            if (item.status_action) g.status_action = item.status_action;
+            if (item.rekomendasi) g.rekomendasi = item.rekomendasi;
+            else if (item.status_action) g.rekomendasi = item.status_action;
         });
 
         return Object.values(grouped).map(g => {
@@ -152,13 +197,12 @@ export default function DashboardProcurement() {
                 ...g,
                 totalQty: qty,
                 totalCost: qty * g.unitCost,
-                // Highest priority category
                 primaryCategory: Array.from(g.categories).sort((a, b) => {
                     const order = ['terkumpul', 'bulanIni', '1to3', '4to6', '7to12', 'other'];
                     return order.indexOf(a) - order.indexOf(b);
                 })[0] || 'other'
             };
-        }).sort((a, b) => b.totalCost - a.totalCost); // sort by total cost descending by default
+        }).sort((a, b) => b.totalCost - a.totalCost);
     }, [filteredData, isRounding]);
 
     const totalPages = Math.max(1, Math.ceil(aggregatedData.length / itemsPerPage));
@@ -167,279 +211,129 @@ export default function DashboardProcurement() {
         return aggregatedData.slice(startIndex, startIndex + itemsPerPage);
     }, [aggregatedData, currentPage, itemsPerPage]);
 
-    // ----------------------------------------------------
-    // PERHITUNGAN VISUALISASI CHART & TABEL RINGKASAN
-    // ----------------------------------------------------
-    const { statusSummary, topSuppliers, top10Products, categoryRisk } = useMemo(() => {
-        const _status = {};
-        const _supplier = {};
-        const _products = {};
-        const _cat = {
-            'bulanIni': { label: 'Bulan Ini', cost: 0, skus: new Set() },
-            '1to3': { label: '1-3 Bulan', cost: 0, skus: new Set() },
-            '4to6': { label: '4-6 Bulan', cost: 0, skus: new Set() },
-            '7to12': { label: '7-12 Bulan', cost: 0, skus: new Set() }
-        };
+    // ====== CSV EXPORT FUNCTIONS ======
 
-        filteredData.forEach(item => {
-            const cat = getEdCategory(item.ed_date);
-            // Use unit_cost_with_vat
-            const price = Number(item.master_products?.unit_cost_with_vat) || 0;
-            const cost = item.qty * price;
+    // ── CSV DATE BOUNDARY ─────────────────────────────────────────────────────
+    // Export mencakup semua data aktif (filteredData) + terkumpul dari Sep 2025+
+    const CSV_MIN_DATE = '2025-09-01';
 
-            // 1. Status Summary
-            const statName = item.status_action || 'Belum Ditindak';
-            if (!_status[statName]) _status[statName] = { cost: 0, skus: new Set() };
-            _status[statName].cost += cost;
-            _status[statName].skus.add(item.product_code);
-
-            // Risiko = Bukan Terkumpul & Bukan >12 Bln
-            if (cat !== 'terkumpul' && cat !== 'other') {
-                // 2. Top Supplier
-                const supName = item.master_products?.supplier || item.master_products?.supplier_name || 'Tanpa Supplier';
-                if (!_supplier[supName]) _supplier[supName] = 0;
-                _supplier[supName] += cost;
-
-                // 3. Top Products
-                const pCode = item.product_code;
-                const pName = item.master_products?.item_description || pCode;
-                if (!_products[pCode]) _products[pCode] = { name: pName, cost: 0, outlets: new Set() };
-                _products[pCode].cost += cost;
-                _products[pCode].outlets.add(item.outlet_code);
-
-                // 4. Category Bar
-                if (_cat[cat]) {
-                    _cat[cat].cost += cost;
-                    _cat[cat].skus.add(item.product_code);
-                }
-            }
+    const exportDetailData = useMemo(() => {
+        const terkumpulRows = stocks.filter(item => {
+            if (getEdCategory(item.ed_date) !== 'terkumpul') return false;
+            const edDate = item.ed_date || '';
+            const inputDate = (item.input_period || item.created_at || '').slice(0, 10);
+            // Include if either ed_date OR input_date is within range
+            return edDate >= CSV_MIN_DATE || inputDate >= CSV_MIN_DATE;
         });
+        return [...filteredData, ...terkumpulRows];
+    }, [filteredData, stocks]);
 
-        // Sorting
-        const tSuppliers = Object.entries(_supplier)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5)
-            .map(([name, value]) => ({ id: name, label: name, value }));
+    /**
+     * Export Tipe 1: Detail — satu baris per item stok mentah
+     */
+    const handleExportDetail = async () => {
+        if (isExportingDetail || exportDetailData.length === 0) return;
+        setIsExportingDetail(true);
+        setExportDropdownOpen(false);
 
-        const totalSupRisk = tSuppliers.reduce((sum, s) => sum + s.value, 0);
-        tSuppliers.forEach(s => s.percent = totalSupRisk > 0 ? (s.value / totalSupRisk) * 100 : 0);
+        await new Promise(r => setTimeout(r, 50));
 
-        const tProducts = Object.values(_products)
-            .sort((a, b) => b.cost - a.cost)
-            .slice(0, 10);
+        try {
+            const header = ['Kategori', 'Nama Apotek', 'Nama Produk', 'Kode Produk', 'Batch ID', 'Tanggal ED', 'Qty', 'Cost per Unit', 'Total Cost', 'Status Aksi'];
+            const rows = exportDetailData.map(item => {
+                const cat = CATEGORIES.find(c => c.key === getEdCategory(item.ed_date))?.label || getEdCategory(item.ed_date);
+                const unitCost = Number(item.master_products?.unit_cost_with_vat) || 0;
+                const totalCost = (item.qty || 0) * unitCost;
+                const statusAksi = item.rekomendasi || item.status_action || '';
+                return [
+                    csvCell(cat),
+                    csvCell(item.outlet_name || item.outlet_code),
+                    csvCell(item.master_products?.item_description || item.product_code),
+                    csvCodeCell(item.product_code),
+                    csvCell(item.batch_id || ''),
+                    csvCell(item.ed_date || ''),
+                    csvCell(formatNum(item.qty)),
+                    csvCell(unitCost),
+                    csvCell(totalCost),
+                    csvCell(statusAksi)
+                ].join(',');
+            });
 
-        return {
-            statusSummary: _status,
-            topSuppliers: tSuppliers,
-            totalSupRisk,
-            top10Products: tProducts,
-            categoryRisk: Object.values(_cat)
-        };
-    }, [filteredData]);
-
-    // ---- RENDER PIE CHART SVG ----
-    const renderSupplierPie = () => {
-        if (topSuppliers.length === 0) return <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>Tidak ada risiko supplier</div>;
-
-        const colors = ['#dc2626', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
-        let currentOffset = 0;
-        const radius = 15.915494309189533;
-
-        return (
-            <div style={{ position: 'relative', display: 'flex', gap: '24px', alignItems: 'center' }} onMouseLeave={() => setHoveredPie(null)}>
-                <svg viewBox="0 0 42 42" style={{ width: '160px', height: '160px', transform: 'rotate(-90deg)', overflow: 'visible' }}>
-                    <circle cx="21" cy="21" r={radius} fill="transparent" stroke="var(--surface)" strokeWidth="6" />
-                    {topSuppliers.map((slice, idx) => {
-                        const sliceOffset = -currentOffset;
-                        currentOffset += slice.percent;
-                        const isHovered = hoveredPie?.id === slice.id;
-                        const color = colors[idx % colors.length];
-
-                        return (
-                            <circle
-                                key={slice.id} cx="21" cy="21" r={radius} fill="transparent"
-                                stroke={color}
-                                strokeWidth={isHovered ? "8" : "6"}
-                                strokeDasharray={`${slice.percent} ${100 - slice.percent}`}
-                                strokeDashoffset={sliceOffset}
-                                style={{ transition: 'stroke-width 0.2s', cursor: 'pointer', outline: 'none' }}
-                                onMouseEnter={() => setHoveredPie({ ...slice, color })}
-                            />
-                        );
-                    })}
-                </svg>
-
-                {hoveredPie && (
-                    <div style={{
-                        position: 'absolute', top: '10%', left: '30%', background: 'var(--surface)', border: '1px solid var(--border)',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', zIndex: 10, pointerEvents: 'none',
-                        minWidth: '180px', animation: 'fadeIn 0.2s ease-out'
-                    }}>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{hoveredPie.label}</div>
-                        <div style={{ fontSize: '1.05rem', color: 'var(--text-primary)', fontWeight: 700, margin: '4px 0' }}>{formatCurrency(hoveredPie.value)}</div>
-                        <div style={{ fontSize: '0.9rem', color: hoveredPie.color, fontWeight: 700 }}>({hoveredPie.percent.toFixed(1)}%)</div>
-                    </div>
-                )}
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', maxWidth: '200px' }}>
-                    {topSuppliers.map((s, idx) => (
-                        <div key={s.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', opacity: hoveredPie && hoveredPie.id !== s.id ? 0.3 : 1, transition: '0.2s' }}>
-                            <span style={{ width: 12, height: 12, borderRadius: 2, background: colors[idx % colors.length], flexShrink: 0, marginTop: 3 }} />
-                            <span style={{ lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
+            const csv = [header.join(','), ...rows].join('\n');
+            const today = new Date().toISOString().slice(0, 10);
+            triggerDownload(csv, `ShortED_Detail_${today}.csv`);
+            showToast(`✅ ${exportDetailData.length} baris berhasil diekspor sebagai Detail CSV!`);
+        } catch (e) {
+            showToast('❌ Gagal mengekspor: ' + e.message, 'error');
+        } finally {
+            setIsExportingDetail(false);
+        }
     };
 
-    // ---- RENDER COMBO CHART SVG ----
-    const renderComboChart = () => {
-        if (top10Products.length === 0) return <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Kosong</div>;
+    /**
+     * Export Tipe 2: Rekap — digroup per kode produk (aggregatedData + terkumpul Sep 2025+)
+     */
+    const handleExportRekap = async () => {
+        if (isExportingRekap || exportDetailData.length === 0) return;
+        setIsExportingRekap(true);
+        setExportDropdownOpen(false);
 
-        const maxCost = Math.max(...top10Products.map(p => p.cost), 1);
-        const maxOutlets = Math.max(...top10Products.map(p => p.outlets.size), 1) * 1.2; // 20% headroom
+        await new Promise(r => setTimeout(r, 50));
 
-        const w = 800, h = 320, padTop = 20, padBtm = 100, padLeft = 70, padRight = 60;
-        const chartW = w - padLeft - padRight;
-        const chartH = h - padTop - padBtm;
-        const stepX = chartW / top10Products.length;
+        try {
+            // Re-aggregate exportDetailData (includes terkumpul) by product_code
+            const grouped = {};
+            exportDetailData.forEach(item => {
+                const pCode = item.product_code;
+                const unitCost = Number(item.master_products?.unit_cost_with_vat) || 0;
+                if (!grouped[pCode]) {
+                    grouped[pCode] = {
+                        product_code: pCode,
+                        itemName: item.master_products?.item_description || pCode,
+                        supplierInfo: `${item.master_products?.procurement_id || '-'} - ${item.master_products?.supplier || item.master_products?.supplier_name || 'Tanpa Supplier'}`,
+                        primaryCategory: getEdCategory(item.ed_date),
+                        totalQty: 0,
+                        outlets: new Set(),
+                        unitCost,
+                        rekomendasi: item.rekomendasi || item.status_action || ''
+                    };
+                }
+                const g = grouped[pCode];
+                g.totalQty += parseFloat(item.qty) || 0;
+                g.outlets.add(item.outlet_code);
+                if (item.rekomendasi) g.rekomendasi = item.rekomendasi;
+                else if (item.status_action && !g.rekomendasi) g.rekomendasi = item.status_action;
+            });
 
-        // Points for Polyline
-        const linePoints = top10Products.map((p, i) => {
-            const x = padLeft + (i * stepX) + (stepX / 2);
-            const y = padTop + chartH - ((p.outlets.size / maxOutlets) * chartH);
-            return `${x},${y}`;
-        }).join(' ');
+            const rekapRows = Object.values(grouped);
+            const header = ['Kategori ED', 'Supplier', 'Nama Produk', 'Kode Produk', 'Sisa Stok', 'Jumlah Apotek', 'Cost Per Unit', 'Total Cost', 'Status Aksi'];
+            const rows = rekapRows.map(group => {
+                const catLabel = CATEGORIES.find(c => c.key === group.primaryCategory)?.label || group.primaryCategory;
+                const qty = isRounding ? Math.floor(group.totalQty) : group.totalQty;
+                return [
+                    csvCell(catLabel),
+                    csvCell(group.supplierInfo),
+                    csvCell(group.itemName),
+                    csvCodeCell(group.product_code),
+                    csvCell(formatNum(qty)),
+                    csvCell(group.outlets.size),
+                    csvCell(group.unitCost),
+                    csvCell(qty * group.unitCost),
+                    csvCell(group.rekomendasi || '')
+                ].join(',');
+            });
 
-        return (
-            <div style={{ width: '100%', overflowX: 'auto', position: 'relative' }} onMouseLeave={() => setHoveredCombo(null)}>
-                <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', minWidth: '700px', height: '100%', display: 'block', overflow: 'visible' }}>
-                    {/* Grid & Axis Y Left (Cost) */}
-                    {[0, 0.25, 0.5, 0.75, 1].map(pct => {
-                        const y = padTop + chartH - (chartH * pct);
-                        return (
-                            <g key={pct}>
-                                <line x1={padLeft} x2={w - padRight} y1={y} y2={y} stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="4 4" />
-                                <text x={padLeft - 10} y={y + 4} textAnchor="end" fontSize="12" fill="var(--primary)">{formatShortNum(maxCost * pct)}</text>
-                            </g>
-                        );
-                    })}
-                    <text x={20} y={h / 2} transform={`rotate(-90 20 ${h / 2})`} textAnchor="middle" fontSize="13" fontWeight="bold" fill="var(--primary)">Total Biaya</text>
-
-                    {/* Axis Y Right (Outlets) */}
-                    {[0, 0.25, 0.5, 0.75, 1].map(pct => {
-                        const y = padTop + chartH - (chartH * pct);
-                        return <text key={'r' + pct} x={w - padRight + 10} y={y + 4} textAnchor="start" fontSize="12" fill="var(--danger)">{(maxOutlets * pct).toFixed(0)}</text>;
-                    })}
-                    <text x={w - 20} y={h / 2} transform={`rotate(-90 ${w - 20} ${h / 2})`} textAnchor="middle" fontSize="13" fontWeight="bold" fill="var(--danger)">Jumlah Apotek</text>
-
-                    {/* Bars & Interactive Triggers */}
-                    {top10Products.map((p, i) => {
-                        const barH = (p.cost / maxCost) * chartH;
-                        const x = padLeft + (i * stepX) + (stepX * 0.15);
-                        const y = padTop + chartH - barH;
-                        const textName = p.name.length > 20 ? p.name.substring(0, 20) + '...' : p.name;
-
-                        return (
-                            <g key={i} onMouseEnter={(e) => {
-                                const rect = e.target.getBoundingClientRect();
-                                setHoveredCombo({ p, cx: padLeft + (i * stepX) + (stepX / 2), cy: y - 20 });
-                            }}>
-                                <rect x={x} y={y} width={stepX * 0.7} height={barH} fill="var(--primary)" style={{ cursor: 'pointer', transition: 'opacity 0.2s', opacity: hoveredCombo && hoveredCombo.p.name !== p.name ? 0.3 : 1 }} />
-                                {/* Label Sumbu X miring */}
-                                <text x={x + (stepX * 0.35)} y={padTop + chartH + 15} textAnchor="end" transform={`rotate(-40 ${x + (stepX * 0.35)} ${padTop + chartH + 15})`} fontSize="11" fill="var(--text-secondary)">{textName}</text>
-                                {/* Invisible Hover Catcher Box */}
-                                <rect x={padLeft + (i * stepX)} y={padTop} width={stepX} height={chartH + padBtm} fill="transparent" />
-                            </g>
-                        );
-                    })}
-
-                    {/* Line Chart Polyline */}
-                    <polyline points={linePoints} fill="none" stroke="var(--danger)" strokeWidth="2.5" pointerEvents="none" />
-                    {top10Products.map((p, i) => {
-                        const cx = padLeft + (i * stepX) + (stepX / 2);
-                        const cy = padTop + chartH - ((p.outlets.size / maxOutlets) * chartH);
-                        return <circle key={'c' + i} cx={cx} cy={cy} r="4" fill="var(--background)" stroke="var(--danger)" strokeWidth="2" pointerEvents="none" />;
-                    })}
-                </svg>
-
-                {/* Combobox Tooltip Float */}
-                {hoveredCombo && (
-                    <div style={{
-                        position: 'absolute', top: hoveredCombo.cy, left: hoveredCombo.cx, transform: 'translate(-50%, -100%)',
-                        background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
-                        padding: '10px 14px', borderRadius: '6px', zIndex: 20, pointerEvents: 'none', backgroundClip: 'padding-box', minWidth: '220px'
-                    }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', marginBottom: '8px' }}>{hoveredCombo.p.name}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Total Biaya: <strong style={{ color: 'var(--primary-dark)' }}>{formatCurrency(hoveredCombo.p.cost)}</strong></div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Jumlah Apotek: <strong style={{ color: 'var(--danger)' }}>{hoveredCombo.p.outlets.size} Outlet</strong></div>
-                    </div>
-                )}
-            </div>
-        );
+            const csv = [header.join(','), ...rows].join('\n');
+            const today = new Date().toISOString().slice(0, 10);
+            triggerDownload(csv, `ShortED_Rekap_${today}.csv`);
+            showToast(`✅ ${rekapRows.length} produk berhasil diekspor sebagai Rekap CSV!`);
+        } catch (e) {
+            showToast('❌ Gagal mengekspor: ' + e.message, 'error');
+        } finally {
+            setIsExportingRekap(false);
+        }
     };
 
-    // ---- RENDER BAR CHART KATEGORI ----
-    const renderCategoryBar = () => {
-        const maxCost = Math.max(...categoryRisk.map(c => c.cost), 1);
-        const w = 700, h = 280, padTop = 30, padBtm = 60, padLeft = 80, padRight = 30;
-        const chartW = w - padLeft - padRight;
-        const chartH = h - padTop - padBtm;
-        const stepX = chartW / categoryRisk.length;
-
-        return (
-            <div style={{ width: '100%', overflowX: 'auto', position: 'relative' }} onMouseLeave={() => setHoveredBar(null)}>
-                <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', minWidth: '600px', height: '100%', display: 'block' }}>
-                    {/* Grid Y */}
-                    {[0, 0.25, 0.5, 0.75, 1].map(pct => {
-                        const y = padTop + chartH - (chartH * pct);
-                        return (
-                            <g key={pct}>
-                                <line x1={padLeft} x2={w - padRight} y1={y} y2={y} stroke="var(--border-strong)" strokeWidth="1" />
-                                <text x={padLeft - 10} y={y + 4} textAnchor="end" fontSize="12" fill="var(--text-secondary)">{formatShortNum(maxCost * pct)}</text>
-                            </g>
-                        );
-                    })}
-                    <text x={20} y={h / 2} transform={`rotate(-90 20 ${h / 2})`} textAnchor="middle" fontSize="13" fill="var(--text-primary)">Total Biaya (Rp)</text>
-                    <text x={padLeft + chartW / 2} y={h - 15} textAnchor="middle" fontSize="13" fill="var(--text-primary)">Kategori Kedaluwarsa</text>
-
-                    {/* Bars */}
-                    {categoryRisk.map((c, i) => {
-                        const barH = (c.cost / maxCost) * chartH;
-                        const x = padLeft + (i * stepX) + (stepX * 0.2);
-                        const y = padTop + chartH - barH;
-
-                        return (
-                            <g key={i} onMouseEnter={() => setHoveredBar({ c, cx: x + (stepX * 0.3), cy: y - 10 })}>
-                                <rect x={x} y={y} width={stepX * 0.6} height={barH} fill="var(--blue)" className={styles.svgRect} style={{ transition: 'opacity 0.2s', opacity: hoveredBar && hoveredBar.c.label !== c.label ? 0.5 : 1 }} />
-                                <text x={x + (stepX * 0.3)} y={padTop + chartH + 20} textAnchor="middle" fontSize="12" fontWeight="500" fill="var(--text-primary)">{c.label}</text>
-                                <text x={x + (stepX * 0.3)} y={y + 20} textAnchor="middle" fontSize="12" fill="white" fontWeight="600">{c.skus.size > 0 ? `${c.skus.size} SKU` : ''}</text>
-                                {/* Invisible box */}
-                                <rect x={padLeft + (i * stepX)} y={padTop} width={stepX} height={chartH + padBtm} fill="transparent" />
-                            </g>
-                        );
-                    })}
-                </svg>
-
-                {/* Bar Tooltip Float */}
-                {hoveredBar && (
-                    <div style={{
-                        position: 'absolute', top: hoveredBar.cy, left: hoveredBar.cx, transform: 'translate(-50%, -100%)',
-                        background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
-                        padding: '10px 14px', borderRadius: '6px', zIndex: 20, pointerEvents: 'none'
-                    }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{hoveredBar.c.label}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Total Biaya: <strong style={{ color: 'var(--blue)' }}>{formatCurrency(hoveredBar.c.cost)}</strong></div>
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    // ----------------------------------------------------
-    // PEMROSESAN AKSI MASSAL (MODAL CASCADING)
-    // ----------------------------------------------------
     const handleSelectAll = (e) => {
         if (e.target.checked) setSelectedRows([...paginatedData]);
         else setSelectedRows([]);
@@ -455,7 +349,6 @@ export default function DashboardProcurement() {
         setIsSubmittingAction(true);
 
         try {
-            // Format stringifikasi turunan field (Sesuai Single Source Truth)
             let detailAksiString = '';
             if (actionMain === 'Reduce To Clear') detailAksiString = `Diskon: ${actionDetails.diskon || '-'}% (Rp ${actionDetails.diskonRp || '-'}) | Periode: ${actionDetails.periodeAwal || '-'} s/d ${actionDetails.periodeAkhir || '-'}`;
             else if (actionMain === 'TN antar Outlet') detailAksiString = `Tujuan: ${actionDetails.tokoTujuan || '-'} | Periode: ${actionDetails.periodeAwal || '-'} s/d ${actionDetails.periodeAkhir || '-'}`;
@@ -482,7 +375,7 @@ export default function DashboardProcurement() {
 
             if (decError) throw new Error(`Gagal menyimpan keputusan pusat: ${decError.message}`);
 
-            // 2. UPDATE massal ke tabel stocks_ed agar Outlet mendapatkan Pemberitahuan
+            // 2. UPDATE massal ke tabel stocks_ed
             const { error: updError } = await supabase
                 .from('stocks_ed')
                 .update({
@@ -498,7 +391,7 @@ export default function DashboardProcurement() {
             setActionMain('');
             setActionDetails({});
             alert('Aksi massal berhasil dieksekusi dan disebarkan ke semua outlet!');
-            loadData(); // Rehydrate table
+            loadData();
         } catch (err) {
             alert(err.message);
         } finally {
@@ -530,6 +423,14 @@ export default function DashboardProcurement() {
                             <option value="Retur">Retur</option>
                             <option value="Tukar Guling">Tukar Guling</option>
                             <option value="Write Off">Write Off</option>
+                            {/* Diskon Promosi Khusus: TIDAK tampil jika semua produk terpilih ada di procode_exclude
+                                dan kategorinya adalah 1-3 bln, 4-6 bln, atau 7-12 bln */}
+                            {!selectedRows.every(r =>
+                                excludedCodes.has(String(r.product_code).trim()) &&
+                                ['1to3', '4to6', '7to12'].includes(r.primaryCategory)
+                            ) && (
+                                    <option value="Diskon Promosi Khusus">Diskon Promosi Khusus</option>
+                                )}
                             <option value="Other">Other</option>
                         </select>
                     </div>
@@ -575,28 +476,32 @@ export default function DashboardProcurement() {
         );
     };
 
-    if (loading) {
-        return (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '60vh', gap: '16px' }}>
-                <Loader2 size={48} className="spinner" color="var(--primary)" />
-                <h3 style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Mengumpulkan data stok secara utuh...</h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Mohon tunggu sebentar, sedang memproses silang dengan Master Produk.</p>
-            </div>
-        );
-    }
+    if (loading) return <DashboardSkeleton kpiCount={0} chartHeight={0} />;
 
     return (
         <>
             {renderActionModal()}
+
+            {/* ── Toast Notification ── */}
+            {toast && (
+                <div style={{
+                    position: 'fixed', bottom: '24px', right: '24px', zIndex: 10000,
+                    background: toast.type === 'error' ? 'var(--danger)' : '#10b981',
+                    color: 'white', padding: '12px 20px', borderRadius: '10px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.18)', fontSize: '0.9rem', fontWeight: 600,
+                    animation: 'fadeIn 0.3s ease', maxWidth: '380px', lineHeight: 1.4
+                }}>
+                    {toast.message}
+                </div>
+            )}
+
             <div className="fade-up">
                 <div className={styles.pageHeader}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                         <div>
-                            <h2 className={styles.pageTitle}>Menu Procurement</h2>
-                            <p className={styles.pageSubtitle}>Selamat datang, <strong>{user?.name}</strong> — kelola aksi stok Short ED lintas semua outlet.</p>
+                            <h2 className={styles.pageTitle}>Data Stok Eksekusi</h2>
+                            <p className={styles.pageSubtitle}>Buku besar cek stok dan inisiasi perintah ke outlet.</p>
                         </div>
-
-                        {/* Opsi Pembulatan Toggle */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--surface)', padding: '8px 16px', borderRadius: '50px', border: '1px solid var(--border)' }}>
                             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Pembulatan Stok Desimal (ke Bawah)</span>
                             <label className={OutletInputStyles.toggleSwitch} style={{ transform: 'scale(0.8)', margin: 0 }}>
@@ -609,7 +514,6 @@ export default function DashboardProcurement() {
 
                 {error && <div className={OutletInputStyles.alert} style={{ marginBottom: '20px' }}><span>{error}</span></div>}
 
-                {/* Filter Bar */}
                 <div className={styles.section} style={{ marginBottom: '24px', padding: '16px', background: 'var(--surface)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: 'var(--text-primary)', fontWeight: 600 }}>
                         <SlidersHorizontal size={18} /> Filter Data Global
@@ -654,61 +558,9 @@ export default function DashboardProcurement() {
                     </div>
                 </div>
 
-                {/* BARIS 1: Ringkasan Status & Top 5 Supplier */}
-                <div className={styles.twoCol} style={{ marginBottom: '24px' }}>
-                    <div className={styles.section} style={{ display: 'flex', flexDirection: 'column' }}>
-                        <div className={styles.sectionHeader}><span className={styles.sectionTitle}>Ringkasan Status Aksi</span></div>
-                        <div className={OutletInputStyles.tableContainer} style={{ flexGrow: 1, padding: '10px' }}>
-                            <table className={OutletInputStyles.table}>
-                                <thead>
-                                    <tr>
-                                        <th>Status Aksi</th>
-                                        <th style={{ textAlign: 'center' }}>Jumlah SKU</th>
-                                        <th style={{ textAlign: 'right' }}>Total Biaya (Cost)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {Object.entries(statusSummary).map(([status, data]) => (
-                                        <tr key={status}>
-                                            <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{status}</td>
-                                            <td style={{ textAlign: 'center', color: 'var(--primary-dark)' }}>{data.skus.size} item</td>
-                                            <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--danger)' }}>{formatCurrency(data.cost)}</td>
-                                        </tr>
-                                    ))}
-                                    {Object.keys(statusSummary).length === 0 && <tr><td colSpan="3" style={{ textAlign: 'center' }}>Tidak ada data</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div className={styles.section}>
-                        <div className={styles.sectionHeader}><span className={styles.sectionTitle}>Top 5 Supplier Berisiko</span></div>
-                        <div style={{ padding: '20px' }}>
-                            {renderSupplierPie()}
-                        </div>
-                    </div>
-                </div>
-
-                {/* BARIS 2: Combo Chart */}
-                <div className={styles.section} style={{ marginBottom: '24px' }}>
-                    <div className={styles.sectionHeader}><span className={styles.sectionTitle}>Analisis Penyebaran Risiko (Top 10 Produk)</span></div>
-                    <div style={{ padding: '16px 8px' }}>
-                        {renderComboChart()}
-                    </div>
-                </div>
-
-                {/* BARIS 3: Bar Chart Kategori */}
-                <div className={styles.section} style={{ marginBottom: '24px' }}>
-                    <div className={styles.sectionHeader}><span className={styles.sectionTitle}>Visualisasi Risiko Produk ED Berdasarkan Total Biaya (Cost)</span></div>
-                    <div style={{ padding: '16px 8px' }}>
-                        {renderCategoryBar()}
-                    </div>
-                </div>
-
-                {/* TABEL PROCUREMENT DEFAULT */}
                 <div className={styles.section}>
                     <div className={styles.sectionHeader}>
-                        <span className={styles.sectionTitle}>Data Stok Short ED — Aksi Procurement</span>
+                        <span className={styles.sectionTitle}>Tabel Mutasi Produk Short ED</span>
                         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                                 Menampilkan {paginatedData.length} dari {aggregatedData.length} baris (Hal {currentPage}/{totalPages})
@@ -718,9 +570,47 @@ export default function DashboardProcurement() {
                                     <CheckSquare size={14} /> Eksekusi {selectedRows.length} Produk
                                 </button>
                             )}
-                            <button className="btn" style={{ height: '32px', padding: '0 12px', fontSize: '0.78rem', gap: '6px', color: 'var(--text-sub)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                                <FileDown size={14} /> Ekspor CSV
-                            </button>
+
+                            {/* ── Export Dropdown ── */}
+                            <div ref={exportDropdownRef} style={{ position: 'relative' }}>
+                                <button
+                                    className="btn"
+                                    onClick={() => setExportDropdownOpen(prev => !prev)}
+                                    disabled={isExportingDetail || isExportingRekap || aggregatedData.length === 0}
+                                    style={{ height: '32px', padding: '0 14px', fontSize: '0.78rem', gap: '6px', color: 'var(--text-sub)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center' }}
+                                >
+                                    <FileDown size={14} />
+                                    Ekspor CSV
+                                    <ChevronDown size={12} style={{ transition: 'transform 0.2s', transform: exportDropdownOpen ? 'rotate(180deg)' : 'none' }} />
+                                </button>
+
+                                {exportDropdownOpen && (
+                                    <div style={{
+                                        position: 'absolute', top: '36px', right: 0, background: 'var(--surface)',
+                                        border: '1px solid var(--border)', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                        minWidth: '200px', zIndex: 500, overflow: 'hidden', animation: 'fadeIn 0.15s ease'
+                                    }}>
+                                        <button
+                                            onClick={handleExportDetail}
+                                            disabled={isExportingDetail}
+                                            style={{ display: 'flex', width: '100%', alignItems: 'center', gap: '10px', padding: '12px 16px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}
+                                        >
+                                            {isExportingDetail
+                                                ? <><Loader2 size={14} className="spinner" /> Menyiapkan data...</>
+                                                : <><FileDown size={14} color="var(--primary)" /> <span><strong>Export Detail</strong><br /><span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Semua baris stok mentah</span></span></>}
+                                        </button>
+                                        <button
+                                            onClick={handleExportRekap}
+                                            disabled={isExportingRekap}
+                                            style={{ display: 'flex', width: '100%', alignItems: 'center', gap: '10px', padding: '12px 16px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-primary)' }}
+                                        >
+                                            {isExportingRekap
+                                                ? <><Loader2 size={14} className="spinner" /> Menyiapkan data...</>
+                                                : <><FileDown size={14} color="var(--blue)" /> <span><strong>Export Rekap</strong><br /><span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Digroup per kode produk</span></span></>}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -734,9 +624,10 @@ export default function DashboardProcurement() {
                                         <th style={{ width: '40px', textAlign: 'center' }}>
                                             <input type="checkbox" onChange={handleSelectAll} checked={selectedRows.length === paginatedData.length && paginatedData.length > 0} style={{ transform: 'scale(1.2)' }} />
                                         </th>
-                                        <th style={{ width: '30%', minWidth: '300px' }}>Supplier & Produk</th>
-                                        <th style={{ width: '25%', minWidth: '200px' }}>Detail</th>
-                                        <th style={{ width: '25%', minWidth: '200px' }}>Finansial</th>
+                                        <th style={{ width: '25%', minWidth: '250px' }}>Supplier & Produk</th>
+                                        <th style={{ width: '20%', minWidth: '180px' }}>Detail</th>
+                                        <th style={{ width: '15%', minWidth: '150px' }}>Finansial</th>
+                                        <th style={{ width: '25%', minWidth: '200px' }}>Aksi Procurement (Status)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -763,6 +654,13 @@ export default function DashboardProcurement() {
                                                 </td>
                                                 <td style={{ verticalAlign: 'top', paddingTop: '16px', fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: '1.6' }}>
                                                     <div><strong>Cost/Unit:</strong> {formatCurrency(group.unitCost)}</div>
+                                                </td>
+                                                <td style={{ verticalAlign: 'top', paddingTop: '16px', fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: '1.6', wordBreak: 'break-word' }}>
+                                                    {group.rekomendasi ? (
+                                                        <span style={{ color: 'var(--primary-dark)', fontWeight: 600, background: 'var(--blue-light)', padding: '4px 8px', borderRadius: '4px', display: 'inline-block' }}>{group.rekomendasi}</span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-muted)' }}>- Belum Ada Aksi -</span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         );

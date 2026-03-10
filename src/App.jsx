@@ -7,8 +7,9 @@ import ProtectedRoute from './components/ProtectedRoute';
 // Dashboard shells
 import DashboardOutlet from './pages/DashboardOutlet';
 import DashboardAM from './pages/DashboardAM';
-import DashboardProcurement from './pages/DashboardProcurement';
 import DashboardBOD from './pages/DashboardBOD';
+import ProcurementOverview from './pages/ProcurementOverview';
+import ProcurementData from './pages/ProcurementData';
 
 // Outlet sub-pages (stub shells, filled in Phase 4)
 import OutletScanPage from './pages/OutletScanPage';
@@ -23,7 +24,7 @@ function AppRoutes() {
     if (user.role === 'OUTLET') return <Navigate to="/outlet/scan" replace />;
     if (user.role === 'AM') return <Navigate to="/am" replace />;
     if (user.role === 'PROCUREMENT') return <Navigate to="/procurement" replace />;
-    if (user.role === 'BOD') return <Navigate to="/procurement" replace />;
+    if (user.role === 'BOD') return <Navigate to="/bod" replace />;
     return <Navigate to="/login" replace />;
   };
 
@@ -66,7 +67,9 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route path="/procurement" element={<DashboardProcurement />} />
+        <Route path="/procurement" element={<Navigate to="/procurement/overview" replace />} />
+        <Route path="/procurement/overview" element={<ProcurementOverview />} />
+        <Route path="/procurement/data" element={<ProcurementData />} />
         <Route path="/bod" element={<DashboardBOD />} />
       </Route>
 

@@ -3,6 +3,7 @@ import { BarChart3, Package, Store, TrendingDown, RefreshCw, Loader2, Inbox, Act
 import useAuthStore from '../store/authStore';
 import { fetchAMOutlets, fetchAMStocks } from '../services/amService';
 import { getEdCategory, formatDate, getRekomendasi, CATEGORIES } from '../utils/edHelpers';
+import { DashboardSkeleton } from '../components/SkeletonLoader';
 import styles from './Dashboard.module.css';
 import OutletInputStyles from './OutletInputPage.module.css';
 

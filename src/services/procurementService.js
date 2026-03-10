@@ -13,7 +13,7 @@ export async function fetchAllProcurementStocks() {
     while (true) {
         const { data, error } = await supabase
             .from('stocks_ed')
-            .select(`id, outlet_code, product_code, batch_id, ed_date, qty, remark, input_period, status_action`)
+            .select(`id, outlet_code, product_code, batch_id, ed_date, qty, remark, input_period, status_action, rekomendasi`)
             .order('ed_date', { ascending: true })
             .range(page * pageSize, (page + 1) * pageSize - 1);
 

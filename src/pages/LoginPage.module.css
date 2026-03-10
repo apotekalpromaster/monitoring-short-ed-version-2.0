@@ -47,12 +47,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 52px;
     height: 52px;
-    background: linear-gradient(135deg, var(--primary), #7c3aed);
-    border-radius: var(--radius-md);
+    /* Logo height */
     margin: 0 auto 18px;
-    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3);
 }
 
 .title {
