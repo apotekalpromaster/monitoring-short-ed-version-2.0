@@ -162,13 +162,34 @@ export async function saveBulkStockEntries(outletCode, records) {
         return row;
     });
 
-    // Gunakan upsert dengan onConflict 'id' agar replace data yang ada
-    const { error } = await supabase
-        .from('stocks_ed')
-        .upsert(payload, { onConflict: 'id' });
+    // ==========================================
+    // CHUNKING ALGORITHM UNTUK MENCEGAH TIMEOUT
+    // ==========================================
+    const CHUNK_SIZE = 500; // Maksimal 500 baris per HTTP request
+    let totalInserted = 0;
 
-    if (error) throw error;
-    return { success: true, count: payload.length };
+    for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
+        const chunk = payload.slice(i, i + CHUNK_SIZE);
+
+        const { error } = await supabase
+            .from('stocks_ed')
+            .upsert(chunk, { onConflict: 'id' });
+
+        if (error) {
+            console.error(`Error pada chunk ${i} - ${i + CHUNK_SIZE}:`, error);
+            throw new Error(`Gagal menyimpan sebagian data (mulai baris ${i + 1}). Silakan coba lagi. Error: ${error.message}`);
+        }
+
+        totalInserted += chunk.length;
+
+        // Beri jeda 150ms antar request agar CPU Supabase VM dan PgBouncer punya waktu 'bernapas'
+        // Sangat krusial untuk skenario ratusan Outlet upload CSV bersamaan di hari H penutupan.
+        if (i + CHUNK_SIZE < payload.length) {
+            await new Promise(resolve => setTimeout(resolve, 150));
+        }
+    }
+
+    return { success: true, count: totalInserted };
 }
 
 /**
