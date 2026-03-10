@@ -1,0 +1,180 @@
+/* Dashboard.module.css — Shared styles for all dashboard shell pages */
+
+/* ── Page Header ── */
+.pageHeader {
+    margin-bottom: 28px;
+}
+
+.pageTitle {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.3px;
+}
+
+.pageSubtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+}
+
+/* ── KPI Grid ── */
+.kpiGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.kpiCard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xs);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: box-shadow var(--duration) var(--ease-out);
+}
+
+.kpiCard:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.kpiHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.kpiLabel {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.kpiIconWrap {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kpiIconWrap.blue {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.kpiIconWrap.amber {
+    background: #fffbeb;
+    color: var(--warning);
+}
+
+.kpiIconWrap.green {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.kpiIconWrap.red {
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+.kpiValue {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+    line-height: 1;
+}
+
+.kpiMeta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* ── Section ── */
+.section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xs);
+    overflow: hidden;
+}
+
+.sectionHeader {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sectionTitle {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+/* ── Placeholder Area ── */
+.placeholder {
+    padding: 60px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-muted);
+}
+
+.placeholderIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.placeholderText {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.placeholderSub {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    opacity: 0.65;
+}
+
+/* ── Two-col grid for larger sections ── */
+.twoCol {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+}
+
+@media (max-width: 640px) {
+    .twoCol {
+        grid-template-columns: 1fr;
+    }
+
+    .kpiGrid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .kpiValue {
+        font-size: 1.35rem;
+    }
+}

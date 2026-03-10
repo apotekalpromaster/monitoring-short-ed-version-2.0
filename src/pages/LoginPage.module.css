@@ -1,0 +1,161 @@
+/* LoginPage.module.css */
+
+.wrapper {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    /* Subtle animated gradient background */
+    background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(37, 99, 235, 0.12) 0%, transparent 70%),
+        var(--bg);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Soft decorative blob */
+.wrapper::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 80% 80%, rgba(37, 99, 235, 0.06) 0%, transparent 55%);
+    pointer-events: none;
+}
+
+.card {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    background: var(--surface-elevated);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: 44px 40px 40px;
+}
+
+/* ── Header ── */
+.header {
+    text-align: center;
+    margin-bottom: 36px;
+}
+
+.logoMark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    border-radius: var(--radius-md);
+    margin: 0 auto 18px;
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3);
+}
+
+.title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+}
+
+.subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* ── Form ── */
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.inputWrapper {
+    position: relative;
+}
+
+.passwordToggle {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color var(--duration) var(--ease-out);
+    background: none;
+    border: none;
+}
+
+.passwordToggle:hover {
+    color: var(--primary);
+}
+
+.inputWithIcon {
+    padding-right: 46px !important;
+}
+
+/* Password group animation */
+.passwordGroup {
+    overflow: hidden;
+    transition:
+        max-height 0.3s var(--ease-out),
+        opacity 0.25s var(--ease-out);
+}
+
+.passwordGroup.visible {
+    max-height: 120px;
+    opacity: 1;
+}
+
+.passwordGroup.hidden {
+    max-height: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ── Alert ── */
+.alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--danger-light);
+    color: var(--danger);
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* ── Footer ── */
+.footer {
+    text-align: center;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.footerText {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.8;
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+    .card {
+        padding: 32px 24px 28px;
+    }
+
+    .title {
+        font-size: 1.3rem;
+    }
+}
