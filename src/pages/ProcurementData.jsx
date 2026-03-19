@@ -476,7 +476,12 @@ export default function ProcurementData() {
         );
     };
 
-    if (loading) return <DashboardSkeleton kpiCount={0} chartHeight={0} />;
+    if (loading) return (
+        <div className="page-loader">
+            <div className="alpro-spinner"><div className="alpro-spinner-dot"></div></div>
+            <div className="page-loader-text">Memuat Data Stok Eksekusi...<br /><span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Sinkronisasi tabel mutasi produk apotek</span></div>
+        </div>
+    );
 
     return (
         <>

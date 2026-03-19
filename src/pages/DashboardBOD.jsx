@@ -6,7 +6,7 @@ import {
 import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
-    LabelList, AreaChart, Area
+    LabelList
 } from 'recharts';
 import useAuthStore from '../store/authStore';
 import { fetchAllProcurementStocks } from '../services/procurementService';
@@ -254,7 +254,12 @@ export default function DashboardBOD() {
     }, [stocks, selectedCat]);
 
     // ── LOADING / ERROR ──────────────────────────────────────────────────────
-    if (loading) return <DashboardSkeleton kpiCount={4} chartHeight={280} />;
+    if (loading) return (
+        <div className="page-loader">
+            <div className="alpro-spinner"><div className="alpro-spinner-dot"></div></div>
+            <div className="page-loader-text">Memuat Dasboard Eksekutif...<br /><span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Sinkronisasi risiko stok seluruh apotek</span></div>
+        </div>
+    );
 
     const { totalRiskCost, totalExpiredCost, totalRiskSku, totalRiskOutlets, topOutlets, actionPie, categoryBar, tableRows } = analytics;
 
@@ -438,16 +443,10 @@ export default function DashboardBOD() {
                     </div>
                     <div style={{ height: 280 }}>
                         <ResponsiveContainer>
-                            <AreaChart
+                            <BarChart
                                 data={trendData}
                                 margin={{ top: 16, right: 24, left: 10, bottom: 24 }}
                             >
-                                <defs>
-                                    <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.18} />
-                                        <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-light)" />
                                 <XAxis
                                     dataKey="label"
@@ -476,17 +475,14 @@ export default function DashboardBOD() {
                                         );
                                     }}
                                 />
-                                <Area
-                                    type="monotone"
+                                <Bar
                                     dataKey="value"
                                     name="Total Stok Berisiko"
-                                    stroke="var(--primary)"
-                                    strokeWidth={2.5}
-                                    fill="url(#trendGrad)"
-                                    dot={{ r: 4, fill: 'var(--primary)', strokeWidth: 0 }}
-                                    activeDot={{ r: 6, fill: 'var(--primary)', stroke: '#fff', strokeWidth: 2 }}
+                                    fill="var(--primary)"
+                                    radius={[4, 4, 0, 0]}
+                                    maxBarSize={60}
                                 />
-                            </AreaChart>
+                            </BarChart>
                         </ResponsiveContainer>
                     </div>
                 </div>

@@ -175,23 +175,9 @@ export default function ProcurementOverview() {
     };
 
     if (loading) return (
-        <div className="fade-up" style={{ padding: '0 4px' }}>
-            {/* Header skeleton */}
-            <div style={{ marginBottom: 24 }}>
-                <div className="skeleton-text" style={{ width: '40%', height: 24, marginBottom: 10 }} />
-                <div className="skeleton-text" style={{ width: '55%' }} />
-            </div>
-            {/* Filter bar skeleton */}
-            <div className="skeleton-card" style={{ height: 100, marginBottom: 24 }} />
-            {/* Row 1: two chart skeletons */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-                <div className="skeleton-card" style={{ height: 340 }} />
-                <div className="skeleton-card" style={{ height: 340 }} />
-            </div>
-            {/* Row 2: wide chart */}
-            <div className="skeleton-card" style={{ height: 380, marginBottom: 24 }} />
-            {/* Row 3: treemap */}
-            <div className="skeleton-card" style={{ height: 320 }} />
+        <div className="page-loader">
+            <div className="alpro-spinner"><div className="alpro-spinner-dot"></div></div>
+            <div className="page-loader-text">Menyinkronkan data analitik...<br /><span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Menghimpun statistik dari seluruh supplier</span></div>
         </div>
     );
 
