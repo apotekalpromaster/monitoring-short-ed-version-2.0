@@ -1,15 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
     AlertTriangle, Package, TrendingDown, Activity, Loader2,
-    Building2, SlidersHorizontal
+    Building2, SlidersHorizontal, Download
 } from 'lucide-react';
 import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
-    LabelList
+    LabelList, AreaChart, Area
 } from 'recharts';
 import useAuthStore from '../store/authStore';
 import { fetchAllProcurementStocks } from '../services/procurementService';
+import { supabase } from '../services/supabaseClient';
 import { getEdCategory, formatDate, CATEGORIES } from '../utils/edHelpers';
 import { DashboardSkeleton } from '../components/SkeletonLoader';
 import styles from './Dashboard.module.css';
@@ -61,11 +62,43 @@ export default function DashboardBOD() {
     const [stocks, setStocks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [trendData, setTrendData] = useState([]);
 
     // Filter
     const [selectedCat, setSelectedCat] = useState('');   // ED category key
 
-    useEffect(() => { loadData(); }, []);
+    useEffect(() => {
+        loadData();
+        loadTrend();
+    }, []);
+
+    // ── EKSPOR CSV ────────────────────────────────────────────────────────────
+    function exportCSV() {
+        const { tableRows } = analytics;
+        if (!tableRows.length) return;
+        const headers = ['Apotek', 'Nama Produk', 'Kode Produk', 'Kategori ED', 'Terdekat ED', 'Sisa Stok', 'Cost/Unit (Rp)', 'Total Cost (Rp)', 'Status Aksi'];
+        const rows = tableRows.map(r => [
+            r.outletName,
+            r.product,
+            r.code,
+            r.catLabel,
+            r.earliestED,
+            r.totalQty.toFixed(2),
+            r.unitCost,
+            r.totalCost.toFixed(0),
+            r.rekomendasi || '—'
+        ]);
+        const csvContent = [headers, ...rows]
+            .map(cols => cols.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+            .join('\r\n');
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `rekap_short_ed_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
 
     async function loadData() {
         setLoading(true);
@@ -78,6 +111,29 @@ export default function DashboardBOD() {
         } finally {
             setLoading(false);
         }
+    }
+
+    async function loadTrend() {
+        try {
+            const { data, error: tErr } = await supabase
+                .from('log_history')
+                .select('snapshot_date, total_risk_cost')
+                .order('snapshot_date', { ascending: true });
+            if (tErr || !data?.length) return;
+
+            // Group per bulan — jika ada >1 snapshot dalam sebulan, ambil yang terbaru
+            const monthMap = {};
+            for (const row of data) {
+                const d = new Date(row.snapshot_date);
+                if (isNaN(d)) continue;
+                const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                const label = d.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }); // "Mar 2026"
+                if (!monthMap[monthKey] || row.snapshot_date > monthMap[monthKey].raw) {
+                    monthMap[monthKey] = { label, value: Number(row.total_risk_cost) || 0, raw: row.snapshot_date };
+                }
+            }
+            setTrendData(Object.values(monthMap).map(({ label, value }) => ({ label, value })));
+        } catch (_) { /* silent — chart optional */ }
     }
 
     // ── O(n) single-pass aggregation ─────────────────────────────────────────
@@ -371,11 +427,91 @@ export default function DashboardBOD() {
                 </div>
             </div>
 
+            {/* ── TREN PENANGANAN STOK ED — BULANAN ── */}
+            {trendData.length > 0 && (
+                <div className={styles.section} style={{ marginBottom: 24 }}>
+                    <div className={styles.sectionHeader}>
+                        <span className={styles.sectionTitle}>Tren Nilai Stok Berisiko — Rekam Bulanan</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            Sumber: <code style={{ fontSize: '0.78rem' }}>log_history</code> · Snapshot tiap tanggal 21
+                        </span>
+                    </div>
+                    <div style={{ height: 280 }}>
+                        <ResponsiveContainer>
+                            <AreaChart
+                                data={trendData}
+                                margin={{ top: 16, right: 24, left: 10, bottom: 24 }}
+                            >
+                                <defs>
+                                    <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.18} />
+                                        <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-light)" />
+                                <XAxis
+                                    dataKey="label"
+                                    tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                                    angle={-20} textAnchor="end" height={48}
+                                />
+                                <YAxis
+                                    tickFormatter={fmtShort}
+                                    tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                                    width={64}
+                                />
+                                <Tooltip
+                                    content={({ active, payload, label }) => {
+                                        if (!active || !payload?.length) return null;
+                                        return (
+                                            <div style={{
+                                                background: 'var(--surface)', border: '1px solid var(--border)',
+                                                borderRadius: 8, padding: '10px 14px',
+                                                boxShadow: '0 4px 16px rgba(0,0,0,0.1)', fontSize: '0.82rem'
+                                            }}>
+                                                <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--text-primary)' }}>{label}</div>
+                                                <div style={{ color: 'var(--primary)' }}>
+                                                    Total Stok Berisiko: <strong>{fmtRp(payload[0]?.value)}</strong>
+                                                </div>
+                                            </div>
+                                        );
+                                    }}
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="value"
+                                    name="Total Stok Berisiko"
+                                    stroke="var(--primary)"
+                                    strokeWidth={2.5}
+                                    fill="url(#trendGrad)"
+                                    dot={{ r: 4, fill: 'var(--primary)', strokeWidth: 0 }}
+                                    activeDot={{ r: 6, fill: 'var(--primary)', stroke: '#fff', strokeWidth: 2 }}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
+
             {/* ── ROW 4: READ-ONLY TABLE ── */}
             <div className={styles.section}>
                 <div className={styles.sectionHeader}>
                     <span className={styles.sectionTitle}>Tabel Pantau Risiko — Top 100 Produk per Outlet</span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Read-only · Diurutkan berdasarkan Total Cost tertinggi</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Read-only · Diurutkan berdasarkan Total Cost tertinggi</span>
+                        <button
+                            onClick={exportCSV}
+                            disabled={!tableRows.length}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                                background: tableRows.length ? 'var(--primary)' : 'var(--border)', color: '#fff',
+                                fontSize: '0.8rem', fontWeight: 600, transition: 'opacity 0.15s',
+                                opacity: tableRows.length ? 1 : 0.5
+                            }}
+                        >
+                            <Download size={14} /> Ekspor CSV
+                        </button>
+                    </div>
                 </div>
                 {tableRows.length === 0 ? (
                     <div className={OutletInputStyles.emptyState} style={{ padding: '60px 0' }}>
