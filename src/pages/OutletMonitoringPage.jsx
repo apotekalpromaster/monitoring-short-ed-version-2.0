@@ -8,11 +8,11 @@
  * Kategori teratas terbuka secara default.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-    Activity, Package, AlertTriangle, Calendar,
+    Package, AlertTriangle, Calendar,
     CheckCircle2, RefreshCw, Loader2, Inbox, ChevronDown, ChevronRight,
-    Edit2, Save, X, Download, Upload
+    Edit2, Save, X, Download, Upload, Search
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { fetchOutletStocks, updateStockEntry, saveBulkStockEntries } from '../services/outletService';
@@ -33,6 +33,7 @@ export default function OutletMonitoringPage() {
     // Default terbuka: Kategori teratas (biasanya ED Bulan Berjalan, atau 1-3 jika Kosong)
     // Disimpan sebagai objek boolean: { 'bulanIni': true, '1to3': false ... }
     const [openPanels, setOpenPanels] = useState({});
+    const [searchQuery, setSearchQuery] = useState('');
 
     // ── Inline Editing State ──
     const [editingRowId, setEditingRowId] = useState(null);
@@ -303,12 +304,38 @@ export default function OutletMonitoringPage() {
     const nearCount = stocks.filter(s => getEdCategory(s.ed_date) === '1to3').length;
     const terkumpulCount = stocks.filter(s => getEdCategory(s.ed_date) === 'terkumpul').length;
 
-    const grouped = {};
-    stocks.forEach(s => {
-        const cat = getEdCategory(s.ed_date);
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(s);
-    });
+    // ── Search filter: runs before grouping ──────────────────────────────────
+    // useMemo: hanya recompute saat `stocks` atau `searchQuery` berubah.
+    const filteredStocks = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return stocks;
+        return stocks.filter(s => {
+            const name = (s.master_products?.item_description || '').toLowerCase();
+            const code = (s.product_code || '').toLowerCase();
+            return name.includes(q) || code.includes(q);
+        });
+    }, [stocks, searchQuery]);
+
+    // ── Grouped: berbasis filteredStocks (bukan stocks mentah) ───────────────
+    const grouped = useMemo(() => {
+        const g = {};
+        filteredStocks.forEach(s => {
+            const cat = getEdCategory(s.ed_date);
+            if (!g[cat]) g[cat] = [];
+            g[cat].push(s);
+        });
+        return g;
+    }, [filteredStocks]);
+
+    // ── Open panels: saat search aktif, paksa buka semua kategori yang punya hasil ──
+    const derivedOpenPanels = useMemo(() => {
+        if (!searchQuery.trim()) return openPanels;
+        const forced = {};
+        CATEGORIES.forEach(cat => {
+            forced[cat.key] = !!(grouped[cat.key]?.length);
+        });
+        return forced;
+    }, [searchQuery, grouped, openPanels]);
 
     const lastUpdatedStr = lastUpdated
         ? lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
@@ -329,7 +356,55 @@ export default function OutletMonitoringPage() {
                     </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {/* ── Search Bar ── */}
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Search
+                            size={14}
+                            style={{
+                                position: 'absolute', left: '10px',
+                                color: searchQuery ? 'var(--primary)' : 'var(--text-muted)',
+                                pointerEvents: 'none', transition: 'color 0.15s'
+                            }}
+                        />
+                        <input
+                            type="text"
+                            placeholder="Cari nama / kode produk..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            style={{
+                                paddingLeft: '32px',
+                                paddingRight: searchQuery ? '28px' : '12px',
+                                height: '36px',
+                                borderRadius: 'var(--radius-sm)',
+                                border: `1.5px solid ${searchQuery ? 'var(--primary)' : 'var(--border)'}`,
+                                background: 'var(--surface)',
+                                fontSize: '0.82rem',
+                                fontFamily: 'inherit',
+                                color: 'var(--text-main)',
+                                outline: 'none',
+                                width: '220px',
+                                transition: 'border-color 0.15s, box-shadow 0.15s',
+                                boxShadow: searchQuery ? '0 0 0 3px var(--border-focus)' : 'none',
+                            }}
+                            onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 3px var(--border-focus)'; }}
+                            onBlur={e => { if (!searchQuery) { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; } }}
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                title="Hapus pencarian"
+                                style={{
+                                    position: 'absolute', right: '8px',
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
+                                    padding: 0, lineHeight: 1
+                                }}
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
+                    </div>
                     <button
                         onClick={handleDownloadCSV}
                         disabled={loading || stocks.length === 0}
@@ -452,12 +527,27 @@ export default function OutletMonitoringPage() {
                 </div>
             )}
 
+            {/* ── No search result ── */}
+            {!loading && !error && stocks.length > 0 && searchQuery.trim() && filteredStocks.length === 0 && (
+                <div className={styles.section}>
+                    <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <Search size={32} style={{ marginBottom: '12px', opacity: 0.3 }} />
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-sub)', marginBottom: '4px' }}>
+                            Produk tidak ditemukan
+                        </div>
+                        <div style={{ fontSize: '0.80rem' }}>
+                            Tidak ada nama atau kode produk yang cocok dengan &ldquo;<strong>{searchQuery}</strong>&rdquo;
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ── Grouped Accordion Tables ── */}
             {!loading && !error && stocks.length > 0 && CATEGORIES.map(cat => {
                 const items = grouped[cat.key];
                 if (!items || items.length === 0) return null;
 
-                const isOpen = openPanels[cat.key];
+                const isOpen = derivedOpenPanels[cat.key];
 
                 return (
                     <div key={cat.key} className={styles.section} style={{ marginBottom: '16px', overflow: 'hidden' }}>
@@ -473,6 +563,11 @@ export default function OutletMonitoringPage() {
                                 <span className={`${styles.badge} ${styles[cat.badge]}`}>
                                     {items.length} item
                                 </span>
+                                {searchQuery.trim() && (
+                                    <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: '4px' }}>
+                                        (hasil pencarian)
+                                    </span>
+                                )}
                             </span>
                         </div>
 
