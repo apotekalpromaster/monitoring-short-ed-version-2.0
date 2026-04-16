@@ -21,6 +21,12 @@ import styles from './OutletInputPage.module.css';
 
 import { getEdCategory, formatDate, monthsUntilED, getRekomendasi, CATEGORIES } from '../utils/edHelpers';
 
+// ── Single Source of Truth: Periode ED yang diizinkan ──
+const MIN_ED_DATE = '2025-09-01';
+const MAX_ED_DATE = '2027-03-31';
+const ED_PERIOD_LABEL = '1 Sep 2025 - 31 Mar 2027';
+
+
 export default function OutletMonitoringPage() {
     const user = useAuthStore(s => s.user);
 
@@ -69,9 +75,9 @@ export default function OutletMonitoringPage() {
             return;
         }
 
-        // Hardcoded Period Validation
-        if (editForm.edDate < '2025-09-01' || editForm.edDate > '2027-03-31') {
-            alert('Gagal simpan: Tanggal ED di luar periode yang diizinkan (1 Sep 2025 - 31 Mar 2027).');
+        // Period Validation
+        if (editForm.edDate < MIN_ED_DATE || editForm.edDate > MAX_ED_DATE) {
+            alert(`Gagal simpan: Tanggal ED di luar periode yang diizinkan (${ED_PERIOD_LABEL}).`);
             return;
         }
 
@@ -279,15 +285,21 @@ export default function OutletMonitoringPage() {
 
             if (records.length === 0) throw new Error('Tidak ada data valid yang bisa dimuat.');
 
-            // Hardcoded Period Validation for CSV Upload
-            const invalidRecords = records.filter(r => r.edDate < '2025-09-01' || r.edDate > '2027-03-31');
-            if (invalidRecords.length > 0) {
-                throw new Error(`${invalidRecords.length} baris data ditolak karena memiliki Tanggal ED di luar periode 1 Sep 2025 - 31 Mar 2027.`);
+            // Partial-success: pisah valid vs invalid, jangan block semua baris
+            const validRecords = records.filter(r => r.edDate >= MIN_ED_DATE && r.edDate <= MAX_ED_DATE);
+            const invalidCount = records.length - validRecords.length;
+
+            if (validRecords.length === 0) {
+                throw new Error(`Semua ${records.length} baris ditolak. Tanggal ED seluruhnya di luar periode ${ED_PERIOD_LABEL}.`);
             }
 
-            const res = await saveBulkStockEntries(user.code, records);
-            alert(`Berhasil mengunggah ${res.count} data stok!`);
-            loadData(); // refresh tabel
+            const res = await saveBulkStockEntries(user.code, validRecords);
+
+            const msg = invalidCount > 0
+                ? `✅ Berhasil: ${res.count} baris tersimpan.\n⚠️ Dilewati: ${invalidCount} baris (ED di luar periode ${ED_PERIOD_LABEL}).`
+                : `✅ Berhasil mengunggah ${res.count} data stok!`;
+            alert(msg);
+            loadData();
         } catch (err) {
             alert('Gagal mengunggah CSV: ' + err.message);
             setLoading(false);
