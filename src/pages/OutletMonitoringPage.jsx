@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OutletMonitoringPage.jsx — Monitoring Produk Short ED
  *
  * Menampilkan riwayat seluruh produk Short ED yang sudah diinput outlet ini,
@@ -191,7 +191,8 @@ export default function OutletMonitoringPage() {
         });
 
         const csvString = csvRows.join('\n');
-        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        // BOM (\uFEFF) wajib agar Excel bisa membaca UTF-8 dengan benar (konsisten dengan ProcurementData.jsx)
+        const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -205,23 +206,43 @@ export default function OutletMonitoringPage() {
         const file = e.target.files[0];
         if (!file) return;
 
+        // Reset file input lebih awal agar user bisa upload ulang tanpa refresh
+        e.target.value = '';
+
         setLoading(true);
         try {
             const text = await file.text();
+
+            // Strip BOM jika ada (file yang di-save Excel kadang punya BOM di awal)
+            const cleanText = text.replace(/^\uFEFF/, '');
+
             // Split baris (dukung both \n dan \r\n)
-            const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+            const lines = cleanText.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) throw new Error('File CSV kosong atau tidak valid.');
 
-            // Parser CSV yang handal (menangani koma di dalam quote dan escaped quotes "")
-            const parseCsvLine = (text) => {
+            // ── FIX #1: Auto-detect delimiter ──────────────────────────────────
+            // Excel dengan locale Indonesia/Eropa (id-ID, de-DE, fr-FR, dll.)
+            // menggunakan titik koma (;) sebagai separator, bukan koma (,).
+            // Kita deteksi dari baris header: delimiter mana yang lebih banyak muncul.
+            const detectDelimiter = (headerLine) => {
+                const semicolonCount = (headerLine.match(/;/g) || []).length;
+                const commaCount = (headerLine.match(/,/g) || []).length;
+                return semicolonCount > commaCount ? ';' : ',';
+            };
+            const delimiter = detectDelimiter(lines[0]);
+            // ───────────────────────────────────────────────────────────────────
+
+            // Parser CSV yang handal: menangani koma/titik koma di dalam quote dan escaped quotes ""
+            // Menerima delimiter sebagai parameter sehingga bisa menangani kedua format.
+            const parseCsvLine = (lineText, sep) => {
                 let ret = [], col = '', inQuote = false;
-                for (let j = 0; j < text.length; j++) {
-                    let c = text[j];
-                    if (inQuote && c === '"' && text[j + 1] === '"') {
+                for (let j = 0; j < lineText.length; j++) {
+                    let c = lineText[j];
+                    if (inQuote && c === '"' && lineText[j + 1] === '"') {
                         col += '"'; j++;
                     } else if (c === '"') {
                         inQuote = !inQuote;
-                    } else if (c === ',' && !inQuote) {
+                    } else if (c === sep && !inQuote) {
                         ret.push(col); col = '';
                     } else {
                         col += c;
@@ -231,32 +252,33 @@ export default function OutletMonitoringPage() {
                 return ret;
             };
 
+            // Clean data (hapus bungkus format Excel ="""...""" atau "...")
+            const cleanStr = (str) => {
+                if (!str) return '';
+                let s = str.trim();
+                // Hapus awalan '=' jika merupakan indikasi formula Excel wrapper
+                if (s.startsWith('=')) {
+                    s = s.substring(1);
+                }
+                // Hapus semua tanda kutip ganda di awal dan di akhir
+                s = s.replace(/^"+/, '').replace(/"+$/, '');
+                return s.trim();
+            };
+
+            // Helper deteksi apakah ID valid untuk upsert (bukan data baru "NEW_...")
+            const isValidIdForUpsert = (str) => {
+                const s = String(str).trim();
+                return s.length > 0 && !s.startsWith('NEW_');
+            };
+
             const records = [];
-            // Parse mulai baris kedua (index 1) skip header
+            let skippedFormat = 0; // baris yang tidak bisa di-parse (kolom tidak lengkap)
+
+            // Parse mulai baris kedua (index 1), skip header
+            // Array index mapping berdasarkan Header asli:
+            // 0:Unique ID, 1:Kategori, 2:Nama Produk, 3:Kode Produk, 4:Batch ID, 5:Tanggal ED, 6:Qty, 7:Remark
             for (let i = 1; i < lines.length; i++) {
-                const cols = parseCsvLine(lines[i]);
-
-                // Clean data (hapus bungkus format Excel ="""...""" atau "...")
-                const cleanStr = (str) => {
-                    if (!str) return '';
-                    let s = str.trim();
-                    // Hapus awalan '=' jika merupakan indikasi formula Excel wrapper
-                    if (s.startsWith('=')) {
-                        s = s.substring(1); // Hapus '='
-                    }
-                    // Hapus semua tanda kutip ganda di awal dan di akhir tanpa pandang bulu
-                    s = s.replace(/^"+/, '').replace(/"+$/, '');
-                    return s.trim();
-                };
-
-                // Helper deteksi apakah ID valid untuk upsert (bukan data baru "NEW_...")
-                const isValidIdForUpsert = (str) => {
-                    const s = String(str).trim();
-                    return s.length > 0 && !s.startsWith('NEW_');
-                };
-
-                // Array index mapping berdasarkan Header asli:
-                // 0:Unique ID, 1:Kategori, 2:Nama Produk, 3:Kode Produk, 4:Batch ID, 5:Tanggal ED, 6:Qty, 7:Remark
+                const cols = parseCsvLine(lines[i], delimiter);
 
                 const rawUniqueId = cleanStr(cols[0]);
                 const rawProductCode = cols[3];
@@ -280,35 +302,53 @@ export default function OutletMonitoringPage() {
                     }
 
                     records.push(mappedData);
+                } else {
+                    skippedFormat++;
                 }
             }
 
-            if (records.length === 0) throw new Error('Tidak ada data valid yang bisa dimuat.');
+            if (records.length === 0) throw new Error('Tidak ada data valid yang bisa dimuat. Pastikan format CSV sesuai template.');
 
-            // Partial-success: pisah valid vs invalid, jangan block semua baris
+            // Partial-success: pisah valid vs invalid berdasarkan periode ED
             const validRecords = records.filter(r => r.edDate >= MIN_ED_DATE && r.edDate <= MAX_ED_DATE);
-            const invalidCount = records.length - validRecords.length;
+            const invalidPeriod = records.length - validRecords.length;
 
             if (validRecords.length === 0) {
                 throw new Error(`Semua ${records.length} baris ditolak. Tanggal ED seluruhnya di luar periode ${ED_PERIOD_LABEL}.`);
             }
 
+            // ── FIX #4: Preview konfirmasi sebelum commit ke database ───────────
+            // Susun ringkasan parsing agar user bisa memverifikasi sebelum data disimpan
+            const delimiterLabel = delimiter === ';' ? 'titik koma (;) — locale Eropa/Indonesia' : 'koma (,) — locale standar';
+            let confirmMsg = `📋 RINGKASAN UPLOAD CSV\n`;
+            confirmMsg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            confirmMsg += `Delimiter terdeteksi : ${delimiterLabel}\n`;
+            confirmMsg += `Total baris terbaca  : ${lines.length - 1} baris\n`;
+            confirmMsg += `✅ Siap diupload     : ${validRecords.length} baris\n`;
+            if (invalidPeriod > 0) confirmMsg += `❌ Ditolak (periode) : ${invalidPeriod} baris (ED di luar ${ED_PERIOD_LABEL})\n`;
+            if (skippedFormat > 0) confirmMsg += `⚠️  Dilewati (format) : ${skippedFormat} baris (kolom tidak lengkap)\n`;
+            confirmMsg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            confirmMsg += `Lanjutkan upload ${validRecords.length} data ke sistem?`;
+
+            const confirmed = window.confirm(confirmMsg);
+            if (!confirmed) {
+                setLoading(false);
+                return;
+            }
+            // ───────────────────────────────────────────────────────────────────
+
             const res = await saveBulkStockEntries(user.code, validRecords);
 
-            const msg = invalidCount > 0
-                ? `✅ Berhasil: ${res.count} baris tersimpan.\n⚠️ Dilewati: ${invalidCount} baris (ED di luar periode ${ED_PERIOD_LABEL}).`
-                : `✅ Berhasil mengunggah ${res.count} data stok!`;
-            alert(msg);
+            let successMsg = `✅ Berhasil mengunggah ${res.count} data stok!`;
+            if (invalidPeriod > 0) successMsg += `\n⚠️  ${invalidPeriod} baris dilewati (ED di luar periode ${ED_PERIOD_LABEL}).`;
+            if (skippedFormat > 0) successMsg += `\n⚠️  ${skippedFormat} baris dilewati (format kolom tidak lengkap).`;
+            alert(successMsg);
             loadData();
         } catch (err) {
             alert('Gagal mengunggah CSV: ' + err.message);
             setLoading(false);
         }
-
-        // Reset file input
-        e.target.value = '';
     };
-
     useEffect(() => { loadData(); }, [loadData]);
 
     const totalItem = stocks.length;
