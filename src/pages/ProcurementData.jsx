@@ -213,20 +213,26 @@ export default function ProcurementData() {
 
     // ====== CSV EXPORT FUNCTIONS ======
 
-    // ── CSV DATE BOUNDARY ─────────────────────────────────────────────────────
-    // Export mencakup semua data aktif (filteredData) + terkumpul dari Sep 2025+
-    const CSV_MIN_DATE = '2025-09-01';
-
     const exportDetailData = useMemo(() => {
-        const terkumpulRows = stocks.filter(item => {
-            if (getEdCategory(item.ed_date) !== 'terkumpul') return false;
-            const edDate = item.ed_date || '';
-            const inputDate = (item.input_period || item.created_at || '').slice(0, 10);
-            // Include if either ed_date OR input_date is within range
-            return edDate >= CSV_MIN_DATE || inputDate >= CSV_MIN_DATE;
+        return stocks.filter(item => {
+            // Terapkan filter UI secara konsisten jika dipilih oleh pengguna
+            if (selectedCategory && getEdCategory(item.ed_date) !== selectedCategory) return false;
+            if (selectedOutlet && item.outlet_name !== selectedOutlet) return false;
+            
+            const vendor = item.master_products?.supplier || item.master_products?.supplier_name;
+            if (selectedSupplier && vendor !== selectedSupplier) return false;
+            if (selectedProcId && item.master_products?.procurement_id !== selectedProcId) return false;
+
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                const code = (item.product_code || '').toLowerCase();
+                const name = (item.master_products?.item_description || '').toLowerCase();
+                if (!code.includes(q) && !name.includes(q)) return false;
+            }
+
+            return true;
         });
-        return [...filteredData, ...terkumpulRows];
-    }, [filteredData, stocks]);
+    }, [stocks, searchQuery, selectedOutlet, selectedCategory, selectedSupplier, selectedProcId]);
 
     /**
      * Export Tipe 1: Detail — satu baris per item stok mentah
