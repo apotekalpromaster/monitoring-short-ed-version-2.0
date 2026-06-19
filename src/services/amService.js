@@ -35,6 +35,7 @@ export async function fetchAMStocks(outletCodes) {
             .select(`id, outlet_code, product_code, batch_id, ed_date, qty, remark, input_period, status_action, rekomendasi`)
             .in('outlet_code', outletCodes)
             .order('ed_date', { ascending: true })
+            .order('id', { ascending: true })
             .range(page * pageSize, (page + 1) * pageSize - 1);
 
         if (error) throw error;

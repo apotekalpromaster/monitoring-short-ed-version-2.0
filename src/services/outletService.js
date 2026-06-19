@@ -241,6 +241,7 @@ export async function fetchOutletStocks(outletCode) {
             .select(`id, product_code, batch_id, ed_date, qty, remark, input_period, status_action, created_at, rekomendasi`)
             .eq('outlet_code', outletCode)
             .order('ed_date', { ascending: true })
+            .order('id', { ascending: true })
             .range(page * pageSize, (page + 1) * pageSize - 1);
 
         if (error) throw error;
