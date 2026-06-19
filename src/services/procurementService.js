@@ -28,18 +28,7 @@ export async function fetchAllProcurementStocks() {
 
     if (allStocks.length === 0) return [];
 
-    // ── DEDUPLICATION: ambil record terbaru per (outlet + product + batch) ──
-    // Jika Supabase menyimpan baris yang sama dari beberapa input_period,
-    // kita hanya simpan yang input_period-nya paling baru agar qty / cost tidak double-count.
-    const dedupMap = {};
-    for (const row of allStocks) {
-        const key = `${row.outlet_code}__${row.product_code}__${row.batch_id ?? ''}`;
-        const existing = dedupMap[key];
-        if (!existing || (row.input_period ?? '') > (existing.input_period ?? '')) {
-            dedupMap[key] = row;
-        }
-    }
-    const stocksData = Object.values(dedupMap);
+    const stocksData = allStocks;
 
     // 2. Kumpulkan outlet_code unik untuk mengambil nama outlet
     const uniqueOutletCodes = [...new Set(stocksData.map(s => s.outlet_code))].filter(Boolean);
@@ -100,3 +89,4 @@ export async function fetchAllProcurementStocks() {
         };
     });
 }
+
