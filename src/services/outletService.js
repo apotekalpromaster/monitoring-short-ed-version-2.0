@@ -112,7 +112,7 @@ export async function saveStockEntry({ outletCode, productCode, batchId, edDate,
     }
 
     const formattedBatch = batchId.trim().toUpperCase();
-    const inputPeriod = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+    const inputPeriod = edDate.slice(0, 7); // "YYYY-MM"
 
     const { error } = await supabase
         .from('stocks_ed')
@@ -153,7 +153,7 @@ export async function saveBulkStockEntries(outletCode, records) {
             ed_date: r.edDate,
             qty: parseFloat(r.qty),
             remark: r.remark || '',
-            input_period: new Date().toISOString().slice(0, 7)
+            input_period: r.edDate.slice(0, 7)
         };
         // Jika CSV menyertakan ID (kemungkinan hasil download edit) gunakan untuk replace/upsert
         if (r.id && r.id.trim() !== '') {
@@ -167,19 +167,6 @@ export async function saveBulkStockEntries(outletCode, records) {
     // ==========================================
     const CHUNK_SIZE = 500; // Maksimal 500 baris per HTTP request
     let totalInserted = 0;
-
-    // Bersihkan data lama outlet untuk periode pelaporan berjalan agar tidak terjadi duplikasi saat re-upload
-    const currentPeriod = new Date().toISOString().slice(0, 7);
-    const { error: deleteError } = await supabase
-        .from('stocks_ed')
-        .delete()
-        .eq('outlet_code', outletCode)
-        .eq('input_period', currentPeriod);
-
-    if (deleteError) {
-        console.error("Gagal membersihkan data lama sebelum upload:", deleteError);
-        throw new Error("Gagal menginisialisasi penyimpanan: " + deleteError.message);
-    }
 
     for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
         const chunk = payload.slice(i, i + CHUNK_SIZE);
@@ -216,7 +203,7 @@ export async function updateStockEntry(id, { batchId, edDate, qty, remark }) {
     }
 
     const formattedBatch = batchId.trim().toUpperCase();
-    const inputPeriod = new Date().toISOString().slice(0, 7); // "YYYY-MM" pelaporan berjalan
+    const inputPeriod = edDate.slice(0, 7); // update period in case ED date changes month
 
     const { error } = await supabase
         .from('stocks_ed')
@@ -306,4 +293,3 @@ export async function fetchOutletStocks(outletCode) {
         };
     });
 }
-
