@@ -1,0 +1,446 @@
+import { supabase } from './supabaseClient';
+import * as XLSX from 'xlsx';
+
+/**
+ * salesService.js
+ * Modul layanan transaksi dan data penjualan produk Short ED.
+ */
+
+/**
+ * Mencatat transaksi penjualan short ED dan memotong stok di stocks_ed.
+ * Mengutamakan RPC Stored Procedure atomik `fn_record_short_ed_sale`.
+ * Memiliki fallback otomatis ke direct transaction jika RPC belum di-create di Supabase.
+ */
+export async function recordShortEdSale({
+    outletCode,
+    stockEdId,
+    transactionDate,
+    receiptNumber,
+    productCode,
+    batchId,
+    edDate,
+    qty,
+    unitPrice,
+    createdBy = ''
+}) {
+    if (!outletCode) throw new Error('Kode outlet tidak valid.');
+    if (!transactionDate) throw new Error('Tanggal transaksi wajib diisi.');
+    if (!receiptNumber || !receiptNumber.trim()) throw new Error('Nomor struk kasir wajib diisi.');
+    if (!productCode) throw new Error('Kode produk wajib diisi.');
+    if (!batchId || !batchId.trim()) throw new Error('Nomor batch wajib diisi.');
+    const numericQty = parseFloat(qty);
+    const numericPrice = parseFloat(unitPrice);
+
+    if (isNaN(numericQty) || numericQty <= 0) throw new Error('Jumlah terjual (Qty) harus lebih dari 0.');
+    if (isNaN(numericPrice) || numericPrice < 0) throw new Error('Harga satuan tidak boleh negatif.');
+
+    const cleanReceipt = receiptNumber.trim();
+    const cleanBatch = batchId.trim().toUpperCase();
+    const cleanProduct = String(productCode).trim();
+    const inputPeriod = transactionDate.slice(0, 7); // 'YYYY-MM'
+    const totalPrice = Math.round(numericQty * numericPrice * 100) / 100;
+
+    // 1. Coba panggil RPC PostgreSQL
+    try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('fn_record_short_ed_sale', {
+            p_outlet_code: outletCode,
+            p_stock_ed_id: stockEdId || null,
+            p_transaction_date: transactionDate,
+            p_receipt_number: cleanReceipt,
+            p_product_code: cleanProduct,
+            p_batch_id: cleanBatch,
+            p_ed_date: edDate || null,
+            p_qty: numericQty,
+            p_unit_price: numericPrice,
+            p_created_by: createdBy
+        });
+
+        if (!rpcError && rpcData) {
+            return {
+                success: true,
+                saleId: rpcData.sale_id,
+                remainingStock: rpcData.remaining_stock,
+                message: rpcData.message || 'Penjualan berhasil dicatat.'
+            };
+        }
+
+        // Jika error bukan karena function hilang, lempar error asli
+        if (rpcError && !rpcError.message.includes('function') && !rpcError.message.includes('does not exist')) {
+            throw rpcError;
+        }
+    } catch (err) {
+        if (!err.message.includes('function') && !err.message.includes('does not exist')) {
+            throw err;
+        }
+        console.warn('RPC fn_record_short_ed_sale belum terpasang, beralih ke direct client transaction fallback.');
+    }
+
+    // 2. Fallback Direct Transaction (jika SQL RPC belum dijalankan di Supabase)
+    let currentStockRow = null;
+    if (stockEdId) {
+        const { data, error } = await supabase
+            .from('stocks_ed')
+            .select('id, qty')
+            .eq('id', stockEdId)
+            .eq('outlet_code', outletCode)
+            .maybeSingle();
+        if (error) throw error;
+        currentStockRow = data;
+    }
+
+    if (!currentStockRow) {
+        const { data, error } = await supabase
+            .from('stocks_ed')
+            .select('id, qty')
+            .eq('outlet_code', outletCode)
+            .eq('product_code', cleanProduct)
+            .ilike('batch_id', cleanBatch)
+            .order('ed_date', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+        if (error) throw error;
+        currentStockRow = data;
+    }
+
+    if (!currentStockRow) {
+        throw new Error('Data stok produk dengan batch tersebut tidak ditemukan di sistem monitoring apotek.');
+    }
+
+    if (parseFloat(currentStockRow.qty) < numericQty) {
+        throw new Error(`Jumlah penjualan (${numericQty}) melebihi sisa stok yang tercatat (${currentStockRow.qty}).`);
+    }
+
+    // Insert ke sales_short_ed
+    const { data: insertedSale, error: insertErr } = await supabase
+        .from('sales_short_ed')
+        .insert({
+            outlet_code: outletCode,
+            stock_ed_id: currentStockRow.id,
+            transaction_date: transactionDate,
+            receipt_number: cleanReceipt,
+            product_code: cleanProduct,
+            batch_id: cleanBatch,
+            ed_date: edDate || null,
+            qty: numericQty,
+            unit_price: numericPrice,
+            total_price: totalPrice,
+            input_period: inputPeriod,
+            created_by: createdBy
+        })
+        .select()
+        .single();
+
+    if (insertErr) throw insertErr;
+
+    // Kurangi stok di stocks_ed
+    const newQty = Math.max(0, parseFloat(currentStockRow.qty) - numericQty);
+    const { error: updateErr } = await supabase
+        .from('stocks_ed')
+        .update({ qty: newQty })
+        .eq('id', currentStockRow.id);
+
+    if (updateErr) {
+        console.error('Gagal update stok setelah insert penjualan:', updateErr);
+    }
+
+    return {
+        success: true,
+        saleId: insertedSale.id,
+        remainingStock: newQty,
+        message: 'Penjualan berhasil dicatat dan stok monitoring telah diperbarui.'
+    };
+}
+
+/**
+ * Mengambil riwayat penjualan khusus outlet yang sedang login.
+ */
+export async function fetchOutletSales(outletCode, { period, startDate, endDate } = {}) {
+    if (!outletCode) return [];
+
+    let query = supabase
+        .from('sales_short_ed')
+        .select('*')
+        .eq('outlet_code', outletCode)
+        .order('transaction_date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+    if (period) {
+        query = query.eq('input_period', period);
+    }
+    if (startDate) {
+        query = query.gte('transaction_date', startDate);
+    }
+    if (endDate) {
+        query = query.lte('transaction_date', endDate);
+    }
+
+    const { data: salesData, error: salesError } = await query;
+    if (salesError) throw salesError;
+    if (!salesData || salesData.length === 0) return [];
+
+    // Lookup nama produk dari master_products
+    const uniqueProductCodes = [...new Set(salesData.map(s => String(s.product_code || '').trim()))].filter(Boolean);
+    let productMap = {};
+
+    if (uniqueProductCodes.length > 0) {
+        const chunkSize = 100;
+        for (let i = 0; i < uniqueProductCodes.length; i += chunkSize) {
+            const chunk = uniqueProductCodes.slice(i, i + chunkSize);
+            const { data: bCodeData } = await supabase
+                .from('master_products')
+                .select('product_code, barcode, item_description, uom')
+                .in('barcode', chunk);
+
+            if (bCodeData) {
+                bCodeData.forEach(p => {
+                    if (p.barcode) productMap[String(p.barcode).trim()] = p;
+                });
+            }
+        }
+    }
+
+    return salesData.map(sale => ({
+        ...sale,
+        master_products: productMap[String(sale.product_code || '').trim()] || null
+    }));
+}
+
+/**
+ * Mengambil data penjualan seluruh outlet di bawah Area Manager tertentu.
+ */
+export async function fetchAMSales(outletCodes, { period, startDate, endDate } = {}) {
+    if (!outletCodes || outletCodes.length === 0) return [];
+
+    let allSales = [];
+    let page = 0;
+    const pageSize = 1000;
+
+    while (true) {
+        let query = supabase
+            .from('sales_short_ed')
+            .select('*')
+            .in('outlet_code', outletCodes)
+            .order('transaction_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (period) query = query.eq('input_period', period);
+        if (startDate) query = query.gte('transaction_date', startDate);
+        if (endDate) query = query.lte('transaction_date', endDate);
+
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        allSales.push(...data);
+        if (data.length < pageSize) break;
+        page++;
+    }
+
+    if (allSales.length === 0) return [];
+
+    // Lookup Master Outlets
+    const uniqueOutletCodes = [...new Set(allSales.map(s => s.outlet_code))].filter(Boolean);
+    let outletMap = {};
+    if (uniqueOutletCodes.length > 0) {
+        const { data: outletData } = await supabase
+            .from('master_outlets')
+            .select('outlet_code, outlet_name')
+            .in('outlet_code', uniqueOutletCodes);
+
+        if (outletData) {
+            outletData.forEach(o => { outletMap[o.outlet_code] = o.outlet_name; });
+        }
+    }
+
+    // Lookup Master Products
+    const uniqueProductCodes = [...new Set(allSales.map(s => String(s.product_code || '').trim()))].filter(Boolean);
+    let productMap = {};
+    if (uniqueProductCodes.length > 0) {
+        const chunkSize = 100;
+        for (let i = 0; i < uniqueProductCodes.length; i += chunkSize) {
+            const chunk = uniqueProductCodes.slice(i, i + chunkSize);
+            const { data: pData } = await supabase
+                .from('master_products')
+                .select('product_code, barcode, item_description, uom')
+                .in('barcode', chunk);
+
+            if (pData) {
+                pData.forEach(p => {
+                    if (p.barcode) productMap[String(p.barcode).trim()] = p;
+                });
+            }
+        }
+    }
+
+    return allSales.map(sale => ({
+        ...sale,
+        outlet_name: outletMap[sale.outlet_code] || sale.outlet_code,
+        master_products: productMap[String(sale.product_code || '').trim()] || null
+    }));
+}
+
+/**
+ * Mengambil data penjualan seluruh apotek secara nasional (untuk BOD / Procurement).
+ */
+export async function fetchAllSales({ period, startDate, endDate } = {}) {
+    let allSales = [];
+    let page = 0;
+    const pageSize = 1000;
+
+    while (true) {
+        let query = supabase
+            .from('sales_short_ed')
+            .select('*')
+            .order('transaction_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (period) query = query.eq('input_period', period);
+        if (startDate) query = query.gte('transaction_date', startDate);
+        if (endDate) query = query.lte('transaction_date', endDate);
+
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        allSales.push(...data);
+        if (data.length < pageSize) break;
+        page++;
+    }
+
+    if (allSales.length === 0) return [];
+
+    // Fetch Outlets Map
+    const uniqueOutletCodes = [...new Set(allSales.map(s => s.outlet_code))].filter(Boolean);
+    let outletMap = {};
+    if (uniqueOutletCodes.length > 0) {
+        const { data: outletData } = await supabase
+            .from('master_outlets')
+            .select('outlet_code, outlet_name, am_name')
+            .in('outlet_code', uniqueOutletCodes);
+
+        if (outletData) {
+            outletData.forEach(o => {
+                outletMap[o.outlet_code] = {
+                    name: o.outlet_name,
+                    amName: o.am_name
+                };
+            });
+        }
+    }
+
+    // Fetch Products Map
+    const uniqueProductCodes = [...new Set(allSales.map(s => String(s.product_code || '').trim()))].filter(Boolean);
+    let productMap = {};
+    if (uniqueProductCodes.length > 0) {
+        const chunkSize = 100;
+        for (let i = 0; i < uniqueProductCodes.length; i += chunkSize) {
+            const chunk = uniqueProductCodes.slice(i, i + chunkSize);
+            const { data: pData } = await supabase
+                .from('master_products')
+                .select('product_code, barcode, item_description, uom')
+                .in('barcode', chunk);
+
+            if (pData) {
+                pData.forEach(p => {
+                    if (p.barcode) productMap[String(p.barcode).trim()] = p;
+                });
+            }
+        }
+    }
+
+    return allSales.map(sale => ({
+        ...sale,
+        outlet_name: outletMap[sale.outlet_code]?.name || sale.outlet_code,
+        am_name: outletMap[sale.outlet_code]?.amName || '—',
+        master_products: productMap[String(sale.product_code || '').trim()] || null
+    }));
+}
+
+/**
+ * Ekspor data penjualan ke file Excel (.xlsx) dengan SheetJS.
+ * Menghasilkan header profesional, baris data terformat, dan baris GRAND TOTAL di bagian paling bawah.
+ */
+export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Short_ED', isMultiOutlet = false } = {}) {
+    if (!salesList || salesList.length === 0) {
+        alert('Tidak ada data penjualan untuk diunduh.');
+        return;
+    }
+
+    let totalQty = 0;
+    let totalOmzet = 0;
+
+    const rows = salesList.map((item, idx) => {
+        const qty = parseFloat(item.qty) || 0;
+        const unitPrice = parseFloat(item.unit_price) || 0;
+        const totalPrice = parseFloat(item.total_price) || (qty * unitPrice);
+
+        totalQty += qty;
+        totalOmzet += totalPrice;
+
+        const rowObj = {
+            'No': idx + 1,
+        };
+
+        if (isMultiOutlet) {
+            rowObj['Nama Apotek'] = item.outlet_name || item.outlet_code;
+            rowObj['Kode Outlet'] = item.outlet_code;
+            if (item.am_name) rowObj['Area Manager'] = item.am_name;
+        }
+
+        rowObj['Tanggal Transaksi'] = item.transaction_date || '—';
+        rowObj['Nomor Struk Kasir'] = item.receipt_number || '—';
+        rowObj['Kode Produk'] = item.product_code || '—';
+        rowObj['Nama Produk'] = item.master_products?.item_description || '(Tidak diketahui)';
+        rowObj['Nomor Batch'] = item.batch_id || '—';
+        rowObj['Tanggal ED'] = item.ed_date || '—';
+        rowObj['Jumlah Terjual (Qty)'] = qty;
+        rowObj['Harga Satuan (Rp)'] = unitPrice;
+        rowObj['Total Penjualan (Rp)'] = totalPrice;
+        rowObj['Waktu Input'] = item.created_at ? new Date(item.created_at).toLocaleString('id-ID') : '—';
+
+        return rowObj;
+    });
+
+    // Baris Grand Total di bawah
+    const totalRow = {
+        'No': 'GRAND TOTAL',
+    };
+    if (isMultiOutlet) {
+        totalRow['Nama Apotek'] = '';
+        totalRow['Kode Outlet'] = '';
+        if (salesList[0]?.am_name) totalRow['Area Manager'] = '';
+    }
+    totalRow['Tanggal Transaksi'] = '';
+    totalRow['Nomor Struk Kasir'] = '';
+    totalRow['Kode Produk'] = '';
+    totalRow['Nama Produk'] = '';
+    totalRow['Nomor Batch'] = '';
+    totalRow['Tanggal ED'] = '';
+    totalRow['Jumlah Terjual (Qty)'] = totalQty;
+    totalRow['Harga Satuan (Rp)'] = '';
+    totalRow['Total Penjualan (Rp)'] = totalOmzet;
+    totalRow['Waktu Input'] = '';
+
+    rows.push(totalRow);
+
+    // Buat worksheet dan workbook
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Auto-fit lebar kolom
+    const colWidths = Object.keys(rows[0] || {}).map(key => {
+        const maxLen = Math.max(
+            key.length,
+            ...rows.map(r => String(r[key] || '').length)
+        );
+        return { wch: Math.min(Math.max(maxLen + 3, 12), 45) };
+    });
+    ws['!cols'] = colWidths;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Penjualan Short ED');
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `${fileName}_${timestamp}.xlsx`);
+}

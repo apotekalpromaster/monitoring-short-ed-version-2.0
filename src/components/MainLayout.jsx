@@ -2,25 +2,21 @@ import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
     ScanLine, ClipboardPen, Activity,
-    LayoutDashboard, PackageSearch,
+    LayoutDashboard, PackageSearch, Receipt,
     LogOut, Menu, X, ChevronDown
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import styles from './MainLayout.module.css';
 
 /**
- * NAV_CONFIG — ditranslasi PERSIS dari menu lama (Index.html #menu-page).
- *
- * OUTLET  : Scan Barcode | Input Data Manual | Monitoring Produk ED Dekat
- * PROC    : Menu Procurement
- * BOD     : Menu Procurement | Dashboard BOD
- * AM      : Dashboard Area Manager
+ * NAV_CONFIG — Menu navigasi sistem Monitoring Short ED v2.0
  */
 const NAV_CONFIG = {
     OUTLET: [
         { to: '/outlet/scan', icon: ScanLine, label: 'Scan Barcode' },
         { to: '/outlet/input', icon: ClipboardPen, label: 'Input Data Manual' },
         { to: '/outlet/monitoring', icon: Activity, label: 'Monitoring Produk ED' },
+        { to: '/outlet/sales', icon: Receipt, label: 'Penjualan Short ED' },
     ],
     PROCUREMENT: [
         {
@@ -28,7 +24,8 @@ const NAV_CONFIG = {
             icon: PackageSearch,
             subItems: [
                 { to: '/procurement/overview', label: 'Dashboard Analitik' },
-                { to: '/procurement/data', label: 'Data Stok (Batching)' }
+                { to: '/procurement/data', label: 'Data Stok (Batching)' },
+                { to: '/procurement/sales', label: 'Rekap Penjualan' }
             ]
         },
     ],
@@ -38,13 +35,16 @@ const NAV_CONFIG = {
             icon: PackageSearch,
             subItems: [
                 { to: '/procurement/overview', label: 'Dashboard Analitik' },
-                { to: '/procurement/data', label: 'Data Stok (Batching)' }
+                { to: '/procurement/data', label: 'Data Stok (Batching)' },
+                { to: '/procurement/sales', label: 'Rekap Penjualan' }
             ]
         },
         { to: '/bod', icon: LayoutDashboard, label: 'Dashboard BOD' },
+        { to: '/bod/sales', icon: Receipt, label: 'Rekap Penjualan Nasional' },
     ],
     AM: [
         { to: '/am', icon: LayoutDashboard, label: 'Dashboard Area Manager' },
+        { to: '/am/sales', icon: Receipt, label: 'Penjualan Short ED Area' },
     ],
 };
 

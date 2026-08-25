@@ -4,17 +4,21 @@ import LoginPage from './pages/LoginPage';
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 
-// Dashboard shells
+// Dashboard & Procurement Pages
 import DashboardOutlet from './pages/DashboardOutlet';
 import DashboardAM from './pages/DashboardAM';
 import DashboardBOD from './pages/DashboardBOD';
 import ProcurementOverview from './pages/ProcurementOverview';
 import ProcurementData from './pages/ProcurementData';
 
-// Outlet sub-pages (stub shells, filled in Phase 4)
+// Outlet sub-pages
 import OutletScanPage from './pages/OutletScanPage';
 import OutletInputPage from './pages/OutletInputPage';
 import OutletMonitoringPage from './pages/OutletMonitoringPage';
+import OutletSalesPage from './pages/OutletSalesPage';
+
+// Multi-outlet Sales Monitoring (AM & BOD)
+import SalesMonitoringPage from './pages/SalesMonitoringPage';
 
 function AppRoutes() {
   const user = useAuthStore((s) => s.user);
@@ -41,11 +45,11 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        {/* Default redirect for /outlet → /outlet/scan */}
         <Route index path="/outlet" element={<Navigate to="/outlet/scan" replace />} />
         <Route path="/outlet/scan" element={<OutletScanPage />} />
         <Route path="/outlet/input" element={<OutletInputPage />} />
         <Route path="/outlet/monitoring" element={<OutletMonitoringPage />} />
+        <Route path="/outlet/sales" element={<OutletSalesPage />} />
       </Route>
 
       {/* ── AM routes ── */}
@@ -57,9 +61,10 @@ function AppRoutes() {
         }
       >
         <Route path="/am" element={<DashboardAM />} />
+        <Route path="/am/sales" element={<SalesMonitoringPage role="AM" />} />
       </Route>
 
-      {/* ── PROCUREMENT routes (accessible by PROCUREMENT + BOD) ── */}
+      {/* ── PROCUREMENT & BOD routes ── */}
       <Route
         element={
           <ProtectedRoute allowedRoles={['PROCUREMENT', 'BOD']}>
@@ -70,7 +75,9 @@ function AppRoutes() {
         <Route path="/procurement" element={<Navigate to="/procurement/overview" replace />} />
         <Route path="/procurement/overview" element={<ProcurementOverview />} />
         <Route path="/procurement/data" element={<ProcurementData />} />
+        <Route path="/procurement/sales" element={<SalesMonitoringPage role="BOD" />} />
         <Route path="/bod" element={<DashboardBOD />} />
+        <Route path="/bod/sales" element={<SalesMonitoringPage role="BOD" />} />
       </Route>
 
       <Route path="/unauthorized" element={<div style={{ padding: '40px', textAlign: 'center' }}>Akses Ditolak.</div>} />
