@@ -1,5 +1,5 @@
 -- ============================================================
--- SETUP TABEL PENJUALAN SHORT ED & RPC ATOMIK
+-- SETUP TABEL PENJUALAN SHORT ED & RPC ATOMIK (FIXED DATA TYPE)
 -- Jalankan di SQL Editor Supabase (https://wjbyrbbqumqpbqhkdpus.supabase.co)
 -- ============================================================
 
@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS public.sales_short_ed (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     outlet_code       VARCHAR(50) NOT NULL,
-    stock_ed_id       UUID REFERENCES public.stocks_ed(id) ON DELETE SET NULL,
+    stock_ed_id       TEXT REFERENCES public.stocks_ed(id) ON DELETE SET NULL,
     transaction_date  DATE NOT NULL,
     receipt_number    VARCHAR(100) NOT NULL,
     product_code      VARCHAR(100) NOT NULL,
@@ -44,7 +44,7 @@ END $$;
 -- 2. Fungsi / RPC Atomik Pencatatan Penjualan + Pemotongan Stok
 CREATE OR REPLACE FUNCTION public.fn_record_short_ed_sale(
     p_outlet_code       VARCHAR,
-    p_stock_ed_id       UUID,
+    p_stock_ed_id       TEXT,
     p_transaction_date  DATE,
     p_receipt_number    VARCHAR,
     p_product_code      VARCHAR,
@@ -62,7 +62,7 @@ DECLARE
     v_current_stock NUMERIC;
     v_total_price   NUMERIC;
     v_sale_id       UUID;
-    v_target_stock_id UUID := p_stock_ed_id;
+    v_target_stock_id TEXT := p_stock_ed_id;
 BEGIN
     -- 1. Validasi keberadaan data di stocks_ed
     IF v_target_stock_id IS NOT NULL THEN
