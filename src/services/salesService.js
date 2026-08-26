@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx';
  */
 
 /**
- * Mencatat transaksi penjualan short ED dan memotong stok di stocks_ed.
+ * Mencatat transaksi penjualan single-item short ED dan memotong stok di stocks_ed.
  * Mengutamakan RPC Stored Procedure atomik `fn_record_short_ed_sale`.
  * Memiliki fallback otomatis ke direct transaction jika RPC belum di-create di Supabase.
  */
@@ -44,7 +44,7 @@ export async function recordShortEdSale({
     try {
         const { data: rpcData, error: rpcError } = await supabase.rpc('fn_record_short_ed_sale', {
             p_outlet_code: outletCode,
-            p_stock_ed_id: stockEdId || null,
+            p_stock_ed_id: stockEdId ? String(stockEdId) : null,
             p_transaction_date: transactionDate,
             p_receipt_number: cleanReceipt,
             p_product_code: cleanProduct,
@@ -64,7 +64,6 @@ export async function recordShortEdSale({
             };
         }
 
-        // Jika error bukan karena function hilang, lempar error asli
         if (rpcError && !rpcError.message.includes('function') && !rpcError.message.includes('does not exist')) {
             throw rpcError;
         }
@@ -75,7 +74,7 @@ export async function recordShortEdSale({
         console.warn('RPC fn_record_short_ed_sale belum terpasang, beralih ke direct client transaction fallback.');
     }
 
-    // 2. Fallback Direct Transaction (jika SQL RPC belum dijalankan di Supabase)
+    // 2. Fallback Direct Transaction
     let currentStockRow = null;
     if (stockEdId) {
         const { data, error } = await supabase
@@ -103,7 +102,7 @@ export async function recordShortEdSale({
     }
 
     if (!currentStockRow) {
-        throw new Error('Data stok produk dengan batch tersebut tidak ditemukan di sistem monitoring apotek.');
+        throw new Error(`Data stok produk ${cleanProduct} batch ${cleanBatch} tidak ditemukan di sistem monitoring apotek.`);
     }
 
     if (parseFloat(currentStockRow.qty) < numericQty) {
@@ -148,6 +147,49 @@ export async function recordShortEdSale({
         saleId: insertedSale.id,
         remainingStock: newQty,
         message: 'Penjualan berhasil dicatat dan stok monitoring telah diperbarui.'
+    };
+}
+
+/**
+ * Mencatat transaksi penjualan massal (banyak produk sekaligus dalam 1 nomor struk).
+ */
+export async function recordBulkShortEdSales({
+    outletCode,
+    transactionDate,
+    receiptNumber,
+    items = [],
+    createdBy = ''
+}) {
+    if (!outletCode) throw new Error('Kode outlet tidak valid.');
+    if (!transactionDate) throw new Error('Tanggal transaksi wajib diisi.');
+    if (!receiptNumber || !receiptNumber.trim()) throw new Error('Nomor struk kasir wajib diisi.');
+    if (!items || items.length === 0) throw new Error('Minimal harus ada 1 item obat dalam struk.');
+
+    let totalAmount = 0;
+    const results = [];
+
+    for (const item of items) {
+        const res = await recordShortEdSale({
+            outletCode,
+            stockEdId: item.stockEdId,
+            transactionDate,
+            receiptNumber,
+            productCode: item.productCode,
+            batchId: item.batchId,
+            edDate: item.edDate,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            createdBy
+        });
+        results.push(res);
+        totalAmount += (parseFloat(item.qty) || 0) * (parseFloat(item.unitPrice) || 0);
+    }
+
+    return {
+        success: true,
+        count: items.length,
+        totalAmount,
+        message: `Berhasil mencatat ${items.length} item penjualan untuk Struk #${receiptNumber.trim()}!`
     };
 }
 
@@ -360,7 +402,6 @@ export async function fetchAllSales({ period, startDate, endDate } = {}) {
 
 /**
  * Ekspor data penjualan ke file Excel (.xlsx) dengan SheetJS.
- * Menghasilkan header profesional, baris data terformat, dan baris GRAND TOTAL di bagian paling bawah.
  */
 export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Short_ED', isMultiOutlet = false } = {}) {
     if (!salesList || salesList.length === 0) {
@@ -425,10 +466,8 @@ export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Sh
 
     rows.push(totalRow);
 
-    // Buat worksheet dan workbook
     const ws = XLSX.utils.json_to_sheet(rows);
 
-    // Auto-fit lebar kolom
     const colWidths = Object.keys(rows[0] || {}).map(key => {
         const maxLen = Math.max(
             key.length,

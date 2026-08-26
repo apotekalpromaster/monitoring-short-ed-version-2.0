@@ -11,12 +11,12 @@
     z-index: 200;
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 12px 18px;
+    gap: 12px;
+    padding: 14px 18px;
     border-radius: var(--radius-sm);
     font-size: 0.875rem;
     font-weight: 500;
-    max-width: 380px;
+    max-width: 420px;
     box-shadow: var(--shadow-md);
     animation: slideInToast 0.25s var(--ease-out) both;
 }
@@ -119,11 +119,10 @@
 }
 
 .kpiLabel {
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     font-weight: 700;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.02em;
 }
 
 .kpiIconWrap {
@@ -207,19 +206,39 @@
     padding: 22px;
 }
 
+/* ── Sub-Section Header ── */
+.sectionSubTitle {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-sub);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.divider {
+    height: 1px;
+    background: var(--border-light);
+    margin: 20px 0;
+}
+
 /* ── Form Grid & Inputs ── */
 .formGrid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 16px 20px;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
 }
 
 .formGrid3 {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px 20px;
-    margin-bottom: 18px;
+    grid-template-columns: 1.5fr 1fr 1.2fr auto;
+    gap: 16px 16px;
+    align-items: flex-end;
+    margin-bottom: 16px;
 }
 
 .formGroup {
@@ -228,19 +247,13 @@
     gap: 6px;
 }
 
-.formGroupFull {
-    grid-column: 1 / -1;
-}
-
 .formLabel {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: 0.8rem;
+    font-weight: 600;
     color: var(--text-sub);
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
 }
 
 .requiredStar {
@@ -282,6 +295,36 @@
 
 .formSelect {
     cursor: pointer;
+}
+
+/* ── Currency Input with 'Rp' Prefix Badge ── */
+.inputPrefixGroup {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.inputPrefix {
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    bottom: 1px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-sub);
+    background: var(--surface-raised);
+    border-right: 1.5px solid var(--border);
+    border-top-left-radius: 7px;
+    border-bottom-left-radius: 7px;
+    pointer-events: none;
+}
+
+.inputWithPrefix {
+    padding-left: 48px !important;
 }
 
 .helperText {
@@ -444,18 +487,129 @@
     color: white;
 }
 
-/* ── Order Calculation Summary Card ── */
-.orderSummaryCard {
+/* ── Button Tambah Item ke Struk ── */
+.btnAddItem {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 44px;
+    padding: 0 18px;
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    border: 1.5px solid var(--primary);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all var(--duration);
+}
+
+.btnAddItem:hover:not(:disabled) {
+    background: var(--primary);
+    color: white;
+}
+
+.btnAddItem:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Cart Table (Daftar Item dalam Struk) ── */
+.cartSection {
     background: var(--surface-raised);
     border: 1.5px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 18px 20px;
+    padding: 18px;
+    margin-top: 14px;
+}
+
+.cartHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.cartTitle {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cartTableWrap {
+    width: 100%;
+    overflow-x: auto;
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.cartTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+}
+
+.cartTable th {
+    background: #f8fafc;
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+}
+
+.cartTable td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-light);
+    vertical-align: middle;
+}
+
+.btnRemoveItem {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: background-color var(--duration);
+}
+
+.btnRemoveItem:hover {
+    background: var(--danger-light);
+}
+
+.cartEmptyState {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* ── Order Calculation Summary Card ── */
+.orderSummaryCard {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 16px;
-    margin-top: 10px;
+    margin-top: 14px;
 }
 
 .summaryTotalLabel {
@@ -473,7 +627,7 @@
 }
 
 .summaryTotalAmount {
-    font-size: 1.45rem;
+    font-size: 1.5rem;
     font-weight: 800;
     color: var(--success);
     letter-spacing: -0.5px;
@@ -496,7 +650,7 @@
     cursor: pointer;
     box-shadow: 0 4px 14px rgba(249, 115, 22, 0.3);
     transition: all var(--duration);
-    min-width: 220px;
+    min-width: 240px;
 }
 
 .submitBtn:hover:not(:disabled) {
@@ -683,7 +837,7 @@
 /* ── Mobile Responsive Breakpoints ── */
 @media (max-width: 1024px) {
     .formGrid3 {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: 1fr 1fr;
     }
 }
 
@@ -714,6 +868,11 @@
     .searchInput {
         height: 46px;
         font-size: 0.95rem;
+    }
+
+    .btnAddItem {
+        width: 100%;
+        height: 46px;
     }
 
     .orderSummaryCard {

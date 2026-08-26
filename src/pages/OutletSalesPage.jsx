@@ -1,18 +1,18 @@
 /**
  * OutletSalesPage.jsx — Form Pencatatan & Riwayat Penjualan Produk Short ED
- * Desain UI/UX Modern, Bersih, dan Responsif Mobile-First (Design System Apotek Alpro).
+ * Fitur Multi-Item per Struk Kasir (POS Cart Flow) & Auto-Lookup Barcode/Nama.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-    Receipt, Calendar, Hash, Package, DollarSign,
+    Receipt, Calendar, Hash, Package, Tag,
     CheckCircle2, AlertTriangle, Loader2, Download,
     RefreshCw, Search, X, TrendingUp, ShoppingBag,
-    Layers, AlertCircle, ArrowRight
+    Layers, Plus, Trash2, ShoppingCart
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { fetchOutletStocks } from '../services/outletService';
-import { recordShortEdSale, fetchOutletSales, exportSalesToExcel } from '../services/salesService';
+import { recordBulkShortEdSales, fetchOutletSales, exportSalesToExcel } from '../services/salesService';
 import styles from './OutletSalesPage.module.css';
 
 // ── Formatters ──
@@ -38,21 +38,27 @@ function getCurrentMonthString() {
 export default function OutletSalesPage() {
     const user = useAuthStore(s => s.user);
 
-    // ── Form State ──
+    // ── Struk Header State ──
     const [transactionDate, setTransactionDate] = useState(getTodayString());
     const [receiptNumber, setReceiptNumber] = useState('');
+
+    // ── Current Item Form State ──
     const [productQuery, setProductQuery] = useState('');
+    const [barcodeQuery, setBarcodeQuery] = useState(''); // Independent state so user can type freely
     const [selectedProduct, setSelectedProduct] = useState(null); // { product_code, name, uom, batches: [...] }
     const [productDropdownOpen, setProductDropdownOpen] = useState(false);
     const [selectedBatchId, setSelectedBatchId] = useState('');
     const [qty, setQty] = useState('');
     const [unitPrice, setUnitPrice] = useState('');
+
+    // ── Cart Items in Current Receipt (Multi-Item Support) ──
+    const [cartItems, setCartItems] = useState([]);
     const [submitting, setSubmitting] = useState(false);
 
     // ── Toast Notification State ──
     const [toast, setToast] = useState(null); // { message, type }
 
-    // ── Stocks & Sales Data State ──
+    // ── Stocks & Sales History State ──
     const [stocks, setStocks] = useState([]);
     const [sales, setSales] = useState([]);
     const [loadingStocks, setLoadingStocks] = useState(true);
@@ -66,7 +72,7 @@ export default function OutletSalesPage() {
 
     const searchWrapperRef = useRef(null);
 
-    // ── 1. Load Data Stok Aktif Outlet ──
+    // ── 1. Load Data Stok Aktif Outlet (qty > 0 & belum ditarik) ──
     const loadStocksData = useCallback(async () => {
         if (!user?.code) return;
         setLoadingStocks(true);
@@ -125,7 +131,7 @@ export default function OutletSalesPage() {
         loadSalesData();
     }, [loadSalesData]);
 
-    // Tutup dropdown jika klik di luar area autocomplete
+    // Close autocomplete on click outside
     useEffect(() => {
         function handleClickOutside(e) {
             if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target)) {
@@ -142,9 +148,12 @@ export default function OutletSalesPage() {
         stocks.forEach(s => {
             const code = String(s.product_code || '').trim();
             const name = s.master_products?.item_description || code;
+            const barcode = String(s.master_products?.barcode || s.product_code || '').trim();
+
             if (!map[code]) {
                 map[code] = {
                     product_code: code,
+                    barcode: barcode,
                     name: name,
                     uom: s.master_products?.uom || 'Pcs',
                     suggestedPrice: s.master_products?.price_discounted || s.master_products?.price_non_member || '',
@@ -162,19 +171,20 @@ export default function OutletSalesPage() {
         return Object.values(map);
     }, [stocks]);
 
-    // ── 4. Suggestions untuk Autocomplete Nama / Kode Produk ──
+    // ── 4. Suggestions Autocomplete Nama / Kode Produk ──
     const filteredProductSuggestions = useMemo(() => {
         if (!productQuery || productQuery.trim().length < 1) return [];
         const q = productQuery.trim().toLowerCase();
         return availableProducts.filter(p =>
-            p.name.toLowerCase().includes(q) || p.product_code.toLowerCase().includes(q)
+            p.name.toLowerCase().includes(q) || p.product_code.toLowerCase().includes(q) || (p.barcode && p.barcode.toLowerCase().includes(q))
         ).slice(0, 15);
     }, [availableProducts, productQuery]);
 
-    // ── 5. Handler Pilih Produk ──
+    // ── 5. Handler Pilih Produk dari Autocomplete ──
     const handleSelectProduct = (prod) => {
         setSelectedProduct(prod);
         setProductQuery('');
+        setBarcodeQuery(prod.product_code);
         setProductDropdownOpen(false);
 
         if (prod.batches.length === 1) {
@@ -188,13 +198,29 @@ export default function OutletSalesPage() {
         }
     };
 
-    // ── Handler Scan / Input Kode Produk Manual ──
-    const handleProductCodeInput = (codeVal) => {
-        const clean = codeVal.trim();
-        if (!clean) return;
-        const matched = availableProducts.find(p => p.product_code.toLowerCase() === clean.toLowerCase());
+    // ── 6. Handler Ketik / Scan Barcode (BUG FIX: Independent Input) ──
+    const handleBarcodeChange = (val) => {
+        setBarcodeQuery(val);
+        const clean = val.trim().toLowerCase();
+        if (!clean) {
+            setSelectedProduct(null);
+            setSelectedBatchId('');
+            return;
+        }
+
+        // Coba cocokkan ke product_code atau barcode master
+        const matched = availableProducts.find(p =>
+            p.product_code.toLowerCase() === clean || (p.barcode && p.barcode.toLowerCase() === clean)
+        );
+
         if (matched) {
-            handleSelectProduct(matched);
+            setSelectedProduct(matched);
+            if (matched.batches.length === 1) {
+                setSelectedBatchId(matched.batches[0].batch_id);
+            }
+            if (matched.suggestedPrice && !unitPrice) {
+                setUnitPrice(matched.suggestedPrice);
+            }
         }
     };
 
@@ -204,38 +230,41 @@ export default function OutletSalesPage() {
         return selectedProduct.batches.find(b => b.batch_id === selectedBatchId) || null;
     }, [selectedProduct, selectedBatchId]);
 
-    // ── Kalkulasi Total Penjualan ──
-    const calculatedTotal = useMemo(() => {
+    // ── Validasi Qty Terhadap Sisa Stok (termasuk yang sudah masuk ke cart) ──
+    const alreadyInCartQty = useMemo(() => {
+        if (!selectedProduct || !selectedBatchId) return 0;
+        return cartItems
+            .filter(item => item.productCode === selectedProduct.product_code && item.batchId === selectedBatchId)
+            .reduce((acc, item) => acc + item.qty, 0);
+    }, [cartItems, selectedProduct, selectedBatchId]);
+
+    const effectiveRemainingStock = useMemo(() => {
+        if (!selectedBatchInfo) return 0;
+        return Math.max(0, selectedBatchInfo.qty - alreadyInCartQty);
+    }, [selectedBatchInfo, alreadyInCartQty]);
+
+    const isQtyExceeded = useMemo(() => {
+        if (!selectedBatchInfo) return false;
+        const q = parseFloat(qty) || 0;
+        return q > effectiveRemainingStock;
+    }, [selectedBatchInfo, effectiveRemainingStock, qty]);
+
+    const calculatedItemSubtotal = useMemo(() => {
         const q = parseFloat(qty) || 0;
         const p = parseFloat(unitPrice) || 0;
         return q * p;
     }, [qty, unitPrice]);
 
-    // ── Validasi Form ──
-    const isQtyExceeded = useMemo(() => {
-        if (!selectedBatchInfo) return false;
-        const q = parseFloat(qty) || 0;
-        return q > selectedBatchInfo.qty;
-    }, [selectedBatchInfo, qty]);
-
-    // ── 6. Handler Submit Penjualan ──
-    const handleSubmitSale = async (e) => {
+    // ── 7. Handler Tambah Item ke Keranjang Struk (Multi-Item) ──
+    const handleAddToCart = (e) => {
         e.preventDefault();
 
-        if (!transactionDate) {
-            setToast({ message: 'Tanggal transaksi wajib diisi.', type: 'error' });
-            return;
-        }
-        if (!receiptNumber.trim()) {
-            setToast({ message: 'Nomor struk kasir wajib diisi.', type: 'error' });
-            return;
-        }
         if (!selectedProduct) {
-            setToast({ message: 'Pilih produk Short ED yang dijual terlebih dahulu.', type: 'error' });
+            setToast({ message: 'Pilih obat Short ED yang dijual terlebih dahulu.', type: 'error' });
             return;
         }
         if (!selectedBatchId || !selectedBatchInfo) {
-            setToast({ message: 'Pilih nomor batch produk.', type: 'error' });
+            setToast({ message: 'Pilih nomor batch obat.', type: 'error' });
             return;
         }
         const numericQty = parseFloat(qty);
@@ -243,8 +272,8 @@ export default function OutletSalesPage() {
             setToast({ message: 'Jumlah terjual (Qty) harus lebih dari 0.', type: 'error' });
             return;
         }
-        if (numericQty > selectedBatchInfo.qty) {
-            setToast({ message: `Jumlah terjual (${numericQty}) melebihi sisa stok (${selectedBatchInfo.qty}).`, type: 'error' });
+        if (numericQty > effectiveRemainingStock) {
+            setToast({ message: `Jumlah terjual (${numericQty}) melebihi sisa stok yang tersedia (${effectiveRemainingStock}).`, type: 'error' });
             return;
         }
         const numericPrice = parseFloat(unitPrice);
@@ -253,43 +282,95 @@ export default function OutletSalesPage() {
             return;
         }
 
+        const subtotal = Math.round(numericQty * numericPrice * 100) / 100;
+        const newItem = {
+            id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            stockEdId: selectedBatchInfo.stock_ed_id,
+            productCode: selectedProduct.product_code,
+            productName: selectedProduct.name,
+            batchId: selectedBatchId,
+            edDate: selectedBatchInfo.ed_date,
+            qty: numericQty,
+            unitPrice: numericPrice,
+            totalPrice: subtotal,
+            uom: selectedProduct.uom,
+            maxQty: selectedBatchInfo.qty
+        };
+
+        setCartItems(prev => [...prev, newItem]);
+
+        // Reset form item obat (namun tanggal & nomor struk tetap aman di atas)
+        setSelectedProduct(null);
+        setBarcodeQuery('');
+        setProductQuery('');
+        setSelectedBatchId('');
+        setQty('');
+        setUnitPrice('');
+
+        setToast({ message: `✓ ${newItem.productName} (${numericQty} ${newItem.uom}) ditambahkan ke daftar struk.`, type: 'success' });
+    };
+
+    // ── 8. Handler Hapus Item dari Struk ──
+    const handleRemoveFromCart = (itemId) => {
+        setCartItems(prev => prev.filter(item => item.id !== itemId));
+    };
+
+    // ── 9. Total Keseluruhan Struk ──
+    const { cartTotalQty, cartGrandTotal } = useMemo(() => {
+        let totalQ = 0;
+        let totalRp = 0;
+        cartItems.forEach(item => {
+            totalQ += item.qty;
+            totalRp += item.totalPrice;
+        });
+        return { cartTotalQty: totalQ, cartGrandTotal: totalRp };
+    }, [cartItems]);
+
+    // ── 10. Handler Submit Semua Item dalam Struk (Batch Commit) ──
+    const handleSubmitReceipt = async () => {
+        if (!transactionDate) {
+            setToast({ message: 'Tanggal transaksi wajib diisi.', type: 'error' });
+            return;
+        }
+        if (!receiptNumber.trim()) {
+            setToast({ message: 'Nomor struk kasir wajib diisi.', type: 'error' });
+            return;
+        }
+        if (cartItems.length === 0) {
+            setToast({ message: 'Belum ada obat yang dimasukkan ke dalam struk ini.', type: 'error' });
+            return;
+        }
+
         setSubmitting(true);
         try {
-            const res = await recordShortEdSale({
+            const res = await recordBulkShortEdSales({
                 outletCode: user.code,
-                stockEdId: selectedBatchInfo.stock_ed_id,
                 transactionDate: transactionDate,
                 receiptNumber: receiptNumber.trim(),
-                productCode: selectedProduct.product_code,
-                batchId: selectedBatchId,
-                edDate: selectedBatchInfo.ed_date,
-                qty: numericQty,
-                unitPrice: numericPrice,
+                items: cartItems,
                 createdBy: user.name || user.code
             });
 
             setToast({
-                message: `✅ Penjualan ${selectedProduct.name} (${numericQty} item) berhasil disimpan! Sisa stok: ${res.remainingStock}.`,
+                message: `✅ Struk #${receiptNumber.trim()} berhasil disimpan! (${cartItems.length} item obat, Total: ${fmtRp(cartGrandTotal)})`,
                 type: 'success'
             });
 
-            // Reset form produk yang baru terjual (simpan tanggal dan struk agar kasir cepat input item berikutnya)
-            setSelectedProduct(null);
-            setSelectedBatchId('');
-            setQty('');
-            setUnitPrice('');
+            // Kosongkan keranjang struk & siapkan struk baru
+            setCartItems([]);
+            setReceiptNumber('');
 
-            // Muat ulang stok dan tabel riwayat
+            // Reload stok aktif dan tabel riwayat penjualan
             loadStocksData();
             loadSalesData();
         } catch (err) {
-            setToast({ message: 'Gagal mencatat penjualan: ' + err.message, type: 'error' });
+            setToast({ message: 'Gagal menyimpan transaksi struk: ' + err.message, type: 'error' });
         } finally {
             setSubmitting(false);
         }
     };
 
-    // ── 7. Filter & Search Tabel Riwayat ──
+    // ── 11. Filter & Search Tabel Riwayat ──
     const filteredSales = useMemo(() => {
         if (!tableSearch.trim()) return sales;
         const q = tableSearch.trim().toLowerCase();
@@ -302,7 +383,7 @@ export default function OutletSalesPage() {
         });
     }, [sales, tableSearch]);
 
-    // ── 8. Agregasi Grand Total & KPI ──
+    // ── 12. Agregasi Grand Total Riwayat & KPI ──
     const { totalItemsSold, totalRevenue, totalReceiptsCount } = useMemo(() => {
         let itemsCount = 0;
         let revenue = 0;
@@ -323,7 +404,7 @@ export default function OutletSalesPage() {
         };
     }, [filteredSales]);
 
-    // ── 9. Handler Download Excel ──
+    // ── 13. Handler Download Excel ──
     const handleDownloadExcel = () => {
         if (!filteredSales || filteredSales.length === 0) {
             alert('Tidak ada data penjualan pada periode ini untuk diunduh.');
@@ -353,7 +434,7 @@ export default function OutletSalesPage() {
                 <div>
                     <h2 className={styles.pageTitle}>Penjualan Produk Short ED</h2>
                     <p className={styles.pageSubtitle}>
-                        Apotek: <strong>{user?.name || user?.code}</strong> · Catat transaksi penjualan untuk otomatis memperbarui sisa stok
+                        Apotek: <strong>{user?.name || user?.code}</strong> · Catat transaksi penjualan per struk untuk otomatis memperbarui sisa stok
                     </p>
                 </div>
 
@@ -399,12 +480,12 @@ export default function OutletSalesPage() {
                 </div>
             </div>
 
-            {/* ── FORM INPUT TRANSAKSI PENJUALAN ── */}
+            {/* ── FORM INPUT TRANSAKSI PENJUALAN (POS MULTI-ITEM CART FLOW) ── */}
             <div className={styles.formCard}>
                 <div className={styles.formCardHeader}>
                     <div className={styles.formCardTitle}>
                         <Receipt size={18} color="var(--primary)" />
-                        Form Input Penjualan Short ED
+                        Input Struk Penjualan Short ED
                     </div>
                     <div className={styles.badgeCount}>
                         {availableProducts.length} produk siap dijual
@@ -412,46 +493,56 @@ export default function OutletSalesPage() {
                 </div>
 
                 <div className={styles.formCardBody}>
-                    <form onSubmit={handleSubmitSale}>
-                        {/* Baris 1: Informasi Struk */}
-                        <div className={styles.formGrid}>
-                            <div className={styles.formGroup}>
-                                <label className={styles.formLabel}>
-                                    <Calendar size={14} className={styles.formLabelIcon} />
-                                    Tanggal Transaksi <span className={styles.requiredStar}>*</span>
-                                </label>
-                                <input
-                                    type="date"
-                                    className={styles.formInput}
-                                    value={transactionDate}
-                                    onChange={e => setTransactionDate(e.target.value)}
-                                    required
-                                />
-                            </div>
+                    {/* Seksi 1: Data Struk Kasir */}
+                    <div className={styles.sectionSubTitle}>
+                        <Receipt size={15} color="var(--primary)" />
+                        1. Informasi Struk Kasir
+                    </div>
 
-                            <div className={styles.formGroup}>
-                                <label className={styles.formLabel}>
-                                    <Receipt size={14} className={styles.formLabelIcon} />
-                                    Nomor Struk Kasir <span className={styles.requiredStar}>*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    className={styles.formInput}
-                                    placeholder="Contoh: STR-00129 / 10294"
-                                    value={receiptNumber}
-                                    onChange={e => setReceiptNumber(e.target.value)}
-                                    required
-                                />
-                            </div>
+                    <div className={styles.formGrid}>
+                        <div className={styles.formGroup}>
+                            <label className={styles.formLabel}>
+                                Tanggal Transaksi <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <input
+                                type="date"
+                                className={styles.formInput}
+                                value={transactionDate}
+                                onChange={e => setTransactionDate(e.target.value)}
+                                required
+                            />
                         </div>
 
-                        {/* Baris 2: Pencarian & Autocomplete Produk */}
+                        <div className={styles.formGroup}>
+                            <label className={styles.formLabel}>
+                                Nomor Struk Kasir <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <input
+                                type="text"
+                                className={styles.formInput}
+                                placeholder="Contoh: STR-00129 / 10294"
+                                value={receiptNumber}
+                                onChange={e => setReceiptNumber(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div className={styles.divider}></div>
+
+                    {/* Seksi 2: Tambah Item Obat ke Struk */}
+                    <div className={styles.sectionSubTitle}>
+                        <Package size={15} color="var(--primary)" />
+                        2. Pilih Obat & Masukkan ke Struk
+                    </div>
+
+                    <form onSubmit={handleAddToCart}>
+                        {/* Baris Pencarian Nama & Input Barcode (Independent State) */}
                         <div className={styles.formGrid}>
-                            {/* Lookup Nama Produk */}
+                            {/* Lookup Nama Obat */}
                             <div className={styles.formGroup}>
                                 <label className={styles.formLabel}>
-                                    <Package size={14} className={styles.formLabelIcon} />
-                                    Nama Produk (Lookup Stok Aktif) <span className={styles.requiredStar}>*</span>
+                                    Nama Produk (Lookup Stok Aktif)
                                 </label>
 
                                 <div className={styles.searchWrapper} ref={searchWrapperRef}>
@@ -499,19 +590,23 @@ export default function OutletSalesPage() {
                                 </div>
                             </div>
 
-                            {/* Scan / Input Kode Produk Manual */}
+                            {/* Scan / Ketik Kode Produk Manual (Bebas Ketik & Tidak Terkunci) */}
                             <div className={styles.formGroup}>
                                 <label className={styles.formLabel}>
-                                    <Hash size={14} className={styles.formLabelIcon} />
-                                    Kode Produk / Barcode
+                                    Kode Produk / Barcode (Bisa Diketik / Discan)
                                 </label>
                                 <input
                                     type="text"
                                     className={styles.formInput}
                                     placeholder="Scan barcode atau ketik kode..."
-                                    value={selectedProduct ? selectedProduct.product_code : ''}
-                                    onChange={e => handleProductCodeInput(e.target.value)}
+                                    value={barcodeQuery}
+                                    onChange={e => handleBarcodeChange(e.target.value)}
                                 />
+                                {selectedProduct && (
+                                    <div className={styles.helperText} style={{ color: 'var(--success)', fontWeight: 600 }}>
+                                        ✓ Terhubung: {selectedProduct.name}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -530,7 +625,7 @@ export default function OutletSalesPage() {
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => { setSelectedProduct(null); setSelectedBatchId(''); }}
+                                    onClick={() => { setSelectedProduct(null); setBarcodeQuery(''); setSelectedBatchId(''); }}
                                     className={styles.btnChangeProduct}
                                 >
                                     Ganti Produk
@@ -538,12 +633,11 @@ export default function OutletSalesPage() {
                             </div>
                         )}
 
-                        {/* Baris 3: Detail Batch, Qty, dan Harga */}
+                        {/* Baris Detail: Batch, Qty, Harga Satuan (Rp), Tombol Tambah */}
                         <div className={styles.formGrid3} style={{ marginTop: '16px' }}>
                             {/* Pilihan Nomor Batch */}
                             <div className={styles.formGroup}>
                                 <label className={styles.formLabel}>
-                                    <Layers size={14} className={styles.formLabelIcon} />
                                     Nomor Batch <span className={styles.requiredStar}>*</span>
                                 </label>
                                 <select
@@ -562,17 +656,17 @@ export default function OutletSalesPage() {
                                 </select>
                                 {selectedBatchInfo ? (
                                     <div className={styles.helperText}>
-                                        Sisa stok: <strong>{selectedBatchInfo.qty} {selectedProduct?.uom || 'Pcs'}</strong>
+                                        Sisa stok tersedia: <strong>{effectiveRemainingStock} {selectedProduct?.uom || 'Pcs'}</strong>
+                                        {alreadyInCartQty > 0 && ` (${alreadyInCartQty} sudah di struk)`}
                                     </div>
                                 ) : (
                                     <div className={styles.helperText}>Pilih produk terlebih dahulu</div>
                                 )}
                             </div>
 
-                            {/* Jumlah Terjual (Qty) */}
+                            {/* Qty Terjual */}
                             <div className={styles.formGroup}>
                                 <label className={styles.formLabel}>
-                                    <ShoppingBag size={14} className={styles.formLabelIcon} />
                                     Jumlah Terjual (Qty) <span className={styles.requiredStar}>*</span>
                                 </label>
                                 <input
@@ -581,69 +675,149 @@ export default function OutletSalesPage() {
                                     placeholder="0"
                                     min="0.01"
                                     step="any"
-                                    max={selectedBatchInfo?.qty || undefined}
+                                    max={effectiveRemainingStock || undefined}
                                     value={qty}
                                     onChange={e => setQty(e.target.value)}
                                     required
                                 />
                                 {isQtyExceeded ? (
                                     <div className={styles.errorText}>
-                                        Melebihi sisa stok (Maks: {selectedBatchInfo.qty})
+                                        Melebihi sisa stok (Maks: {effectiveRemainingStock})
                                     </div>
                                 ) : selectedBatchInfo ? (
-                                    <div className={styles.helperText}>Maksimal: {selectedBatchInfo.qty} {selectedProduct?.uom}</div>
+                                    <div className={styles.helperText}>Maks: {effectiveRemainingStock} {selectedProduct?.uom}</div>
                                 ) : null}
                             </div>
 
-                            {/* Harga Satuan (Rp) */}
+                            {/* Harga Satuan (Prefix Rp Resmi) */}
                             <div className={styles.formGroup}>
                                 <label className={styles.formLabel}>
-                                    <DollarSign size={14} className={styles.formLabelIcon} />
                                     Harga Satuan (Rp) <span className={styles.requiredStar}>*</span>
                                 </label>
-                                <input
-                                    type="number"
-                                    className={styles.formInput}
-                                    placeholder="Contoh: 15000"
-                                    min="0"
-                                    step="any"
-                                    value={unitPrice}
-                                    onChange={e => setUnitPrice(e.target.value)}
-                                    required
-                                />
-                                <div className={styles.helperText}>Harga riil sesuai struk kasir</div>
+                                <div className={styles.inputPrefixGroup}>
+                                    <span className={styles.inputPrefix}>Rp</span>
+                                    <input
+                                        type="number"
+                                        className={`${styles.formInput} ${styles.inputWithPrefix}`}
+                                        placeholder="15000"
+                                        min="0"
+                                        step="any"
+                                        value={unitPrice}
+                                        onChange={e => setUnitPrice(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                                <div className={styles.helperText}>
+                                    Subtotal: <strong>{fmtRp(calculatedItemSubtotal)}</strong>
+                                </div>
+                            </div>
+
+                            {/* Tombol Tambah ke Struk */}
+                            <div className={styles.formGroup}>
+                                <button
+                                    type="submit"
+                                    disabled={!selectedProduct || !selectedBatchId || isQtyExceeded || !qty || !unitPrice}
+                                    className={styles.btnAddItem}
+                                >
+                                    <Plus size={16} />
+                                    + Tambah ke Struk
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    {/* Seksi 3: Daftar Item dalam Struk (Cart Table) */}
+                    <div className={styles.cartSection}>
+                        <div className={styles.cartHeader}>
+                            <div className={styles.cartTitle}>
+                                <ShoppingCart size={16} color="var(--primary)" />
+                                Daftar Obat dalam Struk #{receiptNumber || '—'} ({cartItems.length} item)
                             </div>
                         </div>
 
-                        {/* Order Calculation Summary Card & Submit Button */}
+                        {cartItems.length === 0 ? (
+                            <div className={styles.cartEmptyState}>
+                                Belum ada obat yang dimasukkan ke struk ini. Pilih obat di atas lalu klik <strong>&ldquo;+ Tambah ke Struk&rdquo;</strong>.
+                            </div>
+                        ) : (
+                            <div className={styles.cartTableWrap}>
+                                <table className={styles.cartTable}>
+                                    <thead>
+                                        <tr>
+                                            <th>No</th>
+                                            <th>Nama & Kode Produk</th>
+                                            <th>No. Batch</th>
+                                            <th>Tanggal ED</th>
+                                            <th style={{ textAlign: 'right' }}>Qty Terjual</th>
+                                            <th style={{ textAlign: 'right' }}>Harga Satuan</th>
+                                            <th style={{ textAlign: 'right' }}>Subtotal</th>
+                                            <th style={{ textAlign: 'center', width: '70px' }}>Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {cartItems.map((item, idx) => (
+                                            <tr key={item.id}>
+                                                <td>{idx + 1}</td>
+                                                <td>
+                                                    <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{item.productName}</div>
+                                                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}><code>{item.productCode}</code></div>
+                                                </td>
+                                                <td><span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{item.batchId}</span></td>
+                                                <td>{formatDate(item.edDate)}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--primary)' }}>
+                                                    {item.qty} {item.uom}
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>{fmtRp(item.unitPrice)}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
+                                                    {fmtRp(item.totalPrice)}
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveFromCart(item.id)}
+                                                        className={styles.btnRemoveItem}
+                                                        title="Hapus item ini dari struk"
+                                                    >
+                                                        <Trash2 size={14} /> Hapus
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Seksi 4: Ringkasan Struk & Tombol Simpan Transaksi */}
                         <div className={styles.orderSummaryCard}>
                             <div>
-                                <div className={styles.summaryTotalLabel}>Total Nilai Penjualan</div>
-                                <div className={styles.summaryTotalAmount}>{fmtRp(calculatedTotal)}</div>
+                                <div className={styles.summaryTotalLabel}>Grand Total Struk Ini</div>
+                                <div className={styles.summaryTotalAmount}>{fmtRp(cartGrandTotal)}</div>
                                 <div className={styles.summaryTotalFormula}>
-                                    {qty && unitPrice ? `${qty} item × ${fmtRp(unitPrice)}` : 'Kalkulasi otomatis (Qty × Harga Satuan)'}
+                                    Total {cartTotalQty} pcs/box dari {cartItems.length} jenis obat Short ED
                                 </div>
                             </div>
 
                             <button
-                                type="submit"
-                                disabled={submitting || isQtyExceeded || !selectedProduct || !selectedBatchId}
+                                type="button"
+                                onClick={handleSubmitReceipt}
+                                disabled={submitting || cartItems.length === 0 || !receiptNumber.trim()}
                                 className={styles.submitBtn}
                             >
                                 {submitting ? (
                                     <>
                                         <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                                        Menyimpan Penjualan...
+                                        Menyimpan Transaksi Struk...
                                     </>
                                 ) : (
                                     <>
                                         <CheckCircle2 size={18} />
-                                        Catat Penjualan & Potong Stok
+                                        Simpan Struk ({cartItems.length} Item) & Potong Stok
                                     </>
                                 )}
                             </button>
                         </div>
-                    </form>
+                    </div>
                 </div>
             </div>
 
@@ -653,7 +827,7 @@ export default function OutletSalesPage() {
                     <div>
                         <div className={styles.tableTitle}>Riwayat Penjualan Produk Short ED</div>
                         <div className={styles.tableSubtitle}>
-                            Daftar transaksi penjualan yang telah tercatat dan memotong stok
+                            Daftar seluruh baris transaksi penjualan yang telah tercatat dan memotong stok
                         </div>
                     </div>
 
