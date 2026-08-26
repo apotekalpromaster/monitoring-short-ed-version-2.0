@@ -1,24 +1,19 @@
 /**
  * OutletSalesPage.jsx — Form Pencatatan & Riwayat Penjualan Produk Short ED
- *
- * Fitur:
- *   1. Auto-lookup Nama Produk ⟷ Kode/Barcode dari stok aktif Short ED apotek (qty > 0, exclude sudah ditarik).
- *   2. Seleksi Batch terikat dengan sisa stok aktual di stocks_ed.
- *   3. Kalkulasi Total Penjualan (Rp) otomatis reaktif (Qty × Harga Satuan).
- *   4. Pengurangan stok otomatis di Supabase secara real-time.
- *   5. Tabel riwayat penjualan dengan filter periode, grand total di bawah, dan ekspor Excel (.xlsx).
+ * Desain UI/UX Modern, Bersih, dan Responsif Mobile-First (Design System Apotek Alpro).
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
     Receipt, Calendar, Hash, Package, DollarSign,
     CheckCircle2, AlertTriangle, Loader2, Download,
-    RefreshCw, Search, X, TrendingUp, ShoppingBag
+    RefreshCw, Search, X, TrendingUp, ShoppingBag,
+    Layers, AlertCircle, ArrowRight
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { fetchOutletStocks } from '../services/outletService';
 import { recordShortEdSale, fetchOutletSales, exportSalesToExcel } from '../services/salesService';
-import styles from './OutletInputPage.module.css';
+import styles from './OutletSalesPage.module.css';
 
 // ── Formatters ──
 function fmtRp(val) {
@@ -69,9 +64,9 @@ export default function OutletSalesPage() {
     const [customEndDate, setCustomEndDate] = useState('');
     const [tableSearch, setTableSearch] = useState('');
 
-    const searchInputRef = useRef(null);
+    const searchWrapperRef = useRef(null);
 
-    // ── 1. Load Data Stok Aktif Outlet (Hanya yang qty > 0 & belum ditarik) ──
+    // ── 1. Load Data Stok Aktif Outlet ──
     const loadStocksData = useCallback(async () => {
         if (!user?.code) return;
         setLoadingStocks(true);
@@ -80,7 +75,7 @@ export default function OutletSalesPage() {
             const today = new Date();
             const firstOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
 
-            // Filter: Hanya stok dengan qty > 0 dan ED >= awal bulan berjalan (bukan terkumpul)
+            // Filter: Hanya stok dengan qty > 0 dan ED >= awal bulan berjalan
             const activeStocks = (data || []).filter(s => {
                 const stockQty = parseFloat(s.qty) || 0;
                 const isNotWithdrawn = s.ed_date >= firstOfThisMonth;
@@ -101,7 +96,7 @@ export default function OutletSalesPage() {
         try {
             let filterObj = {};
             const currentMonth = getCurrentMonthString();
-            
+
             if (periodFilter === 'CURRENT_MONTH') {
                 filterObj.period = currentMonth;
             } else if (periodFilter === 'LAST_MONTH') {
@@ -129,6 +124,17 @@ export default function OutletSalesPage() {
     useEffect(() => {
         loadSalesData();
     }, [loadSalesData]);
+
+    // Tutup dropdown jika klik di luar area autocomplete
+    useEffect(() => {
+        function handleClickOutside(e) {
+            if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target)) {
+                setProductDropdownOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // ── 3. Grouping Master Data Produk dari Stok Aktif ──
     const availableProducts = useMemo(() => {
@@ -168,17 +174,15 @@ export default function OutletSalesPage() {
     // ── 5. Handler Pilih Produk ──
     const handleSelectProduct = (prod) => {
         setSelectedProduct(prod);
-        setProductQuery(prod.name);
+        setProductQuery('');
         setProductDropdownOpen(false);
 
-        // Jika hanya ada 1 batch, otomatis pilih batch tersebut
         if (prod.batches.length === 1) {
             setSelectedBatchId(prod.batches[0].batch_id);
         } else {
             setSelectedBatchId('');
         }
 
-        // Set harga referensi jika ada dan form harga masih kosong
         if (prod.suggestedPrice && !unitPrice) {
             setUnitPrice(prod.suggestedPrice);
         }
@@ -269,14 +273,13 @@ export default function OutletSalesPage() {
                 type: 'success'
             });
 
-            // Reset form input produk
-            setProductQuery('');
+            // Reset form produk yang baru terjual (simpan tanggal dan struk agar kasir cepat input item berikutnya)
             setSelectedProduct(null);
             setSelectedBatchId('');
             setQty('');
             setUnitPrice('');
 
-            // Reload data stok aktif dan tabel riwayat penjualan
+            // Muat ulang stok dan tabel riwayat
             loadStocksData();
             loadSalesData();
         } catch (err) {
@@ -337,34 +340,27 @@ export default function OutletSalesPage() {
             {/* Toast Notification */}
             {toast && (
                 <div className={`${styles.toast} ${toast.type === 'success' ? styles.toastSuccess : styles.toastError}`}>
-                    {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                    <span>{toast.message}</span>
-                    <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: 'auto', color: 'inherit' }}>
+                    {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+                    <div style={{ flex: 1 }}>{toast.message}</div>
+                    <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0 }}>
                         <X size={14} />
                     </button>
                 </div>
             )}
 
             {/* Page Header */}
-            <div className={styles.pageHeader} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div className={styles.pageHeader}>
                 <div>
                     <h2 className={styles.pageTitle}>Penjualan Produk Short ED</h2>
                     <p className={styles.pageSubtitle}>
-                        Apotek: <strong>{user?.name}</strong> · Catat transaksi penjualan untuk otomatis memperbarui sisa stok
+                        Apotek: <strong>{user?.name || user?.code}</strong> · Catat transaksi penjualan untuk otomatis memperbarui sisa stok
                     </p>
                 </div>
 
                 <button
                     onClick={() => { loadStocksData(); loadSalesData(); }}
                     disabled={loadingSales || loadingStocks}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                        background: 'var(--surface)', border: '1.5px solid var(--border)',
-                        borderRadius: 'var(--radius-sm)', padding: '8px 14px',
-                        fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                        color: 'var(--text-sub)', fontFamily: 'inherit',
-                        opacity: (loadingSales || loadingStocks) ? 0.6 : 1,
-                    }}
+                    className={styles.btnRefresh}
                 >
                     <RefreshCw size={14} style={(loadingSales || loadingStocks) ? { animation: 'spin 1s linear infinite' } : {}} />
                     Segarkan Data
@@ -376,25 +372,27 @@ export default function OutletSalesPage() {
                 <div className={styles.kpiCard}>
                     <div className={styles.kpiHeader}>
                         <span className={styles.kpiLabel}>Total Terjual</span>
-                        <div className={`${styles.kpiIconWrap} ${styles.blue}`}><ShoppingBag size={15} /></div>
+                        <div className={`${styles.kpiIconWrap} ${styles.iconBlue}`}><ShoppingBag size={16} /></div>
                     </div>
                     <div className={styles.kpiValue}>{loadingSales ? '…' : totalItemsSold}</div>
                     <div className={styles.kpiMeta}>Pcs / Box keluar</div>
                 </div>
+
                 <div className={styles.kpiCard}>
                     <div className={styles.kpiHeader}>
                         <span className={styles.kpiLabel}>Total Omzet Penjualan</span>
-                        <div className={`${styles.kpiIconWrap} ${styles.green}`}><TrendingUp size={15} /></div>
+                        <div className={`${styles.kpiIconWrap} ${styles.iconGreen}`}><TrendingUp size={16} /></div>
                     </div>
-                    <div className={styles.kpiValue} style={{ fontSize: '1.25rem', color: 'var(--success)' }}>
+                    <div className={styles.kpiValue} style={{ color: 'var(--success)' }}>
                         {loadingSales ? '…' : fmtRp(totalRevenue)}
                     </div>
                     <div className={styles.kpiMeta}>Nilai penjualan terealisasi</div>
                 </div>
+
                 <div className={styles.kpiCard}>
                     <div className={styles.kpiHeader}>
                         <span className={styles.kpiLabel}>Total Struk Kasir</span>
-                        <div className={`${styles.kpiIconWrap} ${styles.amber}`}><Receipt size={15} /></div>
+                        <div className={`${styles.kpiIconWrap} ${styles.iconAmber}`}><Receipt size={16} /></div>
                     </div>
                     <div className={styles.kpiValue}>{loadingSales ? '…' : totalReceiptsCount}</div>
                     <div className={styles.kpiMeta}>Nomor transaksi tercatat</div>
@@ -402,273 +400,269 @@ export default function OutletSalesPage() {
             </div>
 
             {/* ── FORM INPUT TRANSAKSI PENJUALAN ── */}
-            <div className={styles.section} style={{ marginBottom: '24px' }}>
-                <div className={styles.sectionHeader} style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-                    <div className={styles.sectionTitle} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className={styles.formCard}>
+                <div className={styles.formCardHeader}>
+                    <div className={styles.formCardTitle}>
                         <Receipt size={18} color="var(--primary)" />
                         Form Input Penjualan Short ED
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    <div className={styles.badgeCount}>
                         {availableProducts.length} produk siap dijual
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmitSale} style={{ padding: '20px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                        {/* Tanggal Transaksi */}
-                        <div className={styles.field}>
-                            <label className={styles.label}>
-                                <Calendar size={13} /> Tanggal Transaksi <span style={{ color: 'var(--danger)' }}>*</span>
-                            </label>
-                            <input
-                                type="date"
-                                className={styles.input}
-                                value={transactionDate}
-                                onChange={e => setTransactionDate(e.target.value)}
-                                required
-                            />
-                        </div>
-
-                        {/* Nomor Struk */}
-                        <div className={styles.field}>
-                            <label className={styles.label}>
-                                <Receipt size={13} /> Nomor Struk Kasir <span style={{ color: 'var(--danger)' }}>*</span>
-                            </label>
-                            <input
-                                type="text"
-                                className={styles.input}
-                                placeholder="Contoh: STR-00129 / 10294"
-                                value={receiptNumber}
-                                onChange={e => setReceiptNumber(e.target.value)}
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    {/* Lookup Produk & Kode Produk */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                        {/* Nama Produk (Lookup Autocomplete) */}
-                        <div className={styles.field} style={{ position: 'relative' }}>
-                            <label className={styles.label}>
-                                <Package size={13} /> Nama Produk (Lookup Stok Aktif) <span style={{ color: 'var(--danger)' }}>*</span>
-                            </label>
-                            <div style={{ position: 'relative' }}>
+                <div className={styles.formCardBody}>
+                    <form onSubmit={handleSubmitSale}>
+                        {/* Baris 1: Informasi Struk */}
+                        <div className={styles.formGrid}>
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    <Calendar size={14} className={styles.formLabelIcon} />
+                                    Tanggal Transaksi <span className={styles.requiredStar}>*</span>
+                                </label>
                                 <input
-                                    ref={searchInputRef}
-                                    type="text"
-                                    className={styles.input}
-                                    placeholder="Ketik nama atau kode produk..."
-                                    value={productQuery}
-                                    onChange={e => {
-                                        setProductQuery(e.target.value);
-                                        setProductDropdownOpen(true);
-                                    }}
-                                    onFocus={() => setProductDropdownOpen(true)}
+                                    type="date"
+                                    className={styles.formInput}
+                                    value={transactionDate}
+                                    onChange={e => setTransactionDate(e.target.value)}
                                     required
                                 />
-                                {productQuery && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setProductQuery('');
-                                            setSelectedProduct(null);
-                                            setSelectedBatchId('');
+                            </div>
+
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    <Receipt size={14} className={styles.formLabelIcon} />
+                                    Nomor Struk Kasir <span className={styles.requiredStar}>*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    className={styles.formInput}
+                                    placeholder="Contoh: STR-00129 / 10294"
+                                    value={receiptNumber}
+                                    onChange={e => setReceiptNumber(e.target.value)}
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        {/* Baris 2: Pencarian & Autocomplete Produk */}
+                        <div className={styles.formGrid}>
+                            {/* Lookup Nama Produk */}
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    <Package size={14} className={styles.formLabelIcon} />
+                                    Nama Produk (Lookup Stok Aktif) <span className={styles.requiredStar}>*</span>
+                                </label>
+
+                                <div className={styles.searchWrapper} ref={searchWrapperRef}>
+                                    <Search size={15} className={styles.searchIconLeft} />
+                                    <input
+                                        type="text"
+                                        className={styles.searchInput}
+                                        placeholder="Ketik nama atau kode obat..."
+                                        value={productQuery}
+                                        onChange={e => {
+                                            setProductQuery(e.target.value);
+                                            setProductDropdownOpen(true);
                                         }}
-                                        style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-                                    >
-                                        <X size={14} />
-                                    </button>
+                                        onFocus={() => setProductDropdownOpen(true)}
+                                    />
+                                    {productQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setProductQuery('')}
+                                            className={styles.clearSearchBtn}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    )}
+
+                                    {/* Dropdown Hasil Pencarian */}
+                                    {productDropdownOpen && filteredProductSuggestions.length > 0 && (
+                                        <div className={styles.dropdownMenu}>
+                                            {filteredProductSuggestions.map(p => (
+                                                <div
+                                                    key={p.product_code}
+                                                    onClick={() => handleSelectProduct(p)}
+                                                    className={styles.dropdownItem}
+                                                >
+                                                    <div className={styles.dropdownItemName}>{p.name}</div>
+                                                    <div className={styles.dropdownItemMeta}>
+                                                        <span>Kode: <code>{p.product_code}</code></span>
+                                                        <span>·</span>
+                                                        <span>{p.batches.length} batch tersedia</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Scan / Input Kode Produk Manual */}
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    <Hash size={14} className={styles.formLabelIcon} />
+                                    Kode Produk / Barcode
+                                </label>
+                                <input
+                                    type="text"
+                                    className={styles.formInput}
+                                    placeholder="Scan barcode atau ketik kode..."
+                                    value={selectedProduct ? selectedProduct.product_code : ''}
+                                    onChange={e => handleProductCodeInput(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Banner Produk Terpilih */}
+                        {selectedProduct && (
+                            <div className={styles.selectedProductBanner}>
+                                <div className={styles.selectedProductInfo}>
+                                    <div className={styles.selectedProductName}>{selectedProduct.name}</div>
+                                    <div className={styles.selectedProductDetails}>
+                                        <span>Kode: <code>{selectedProduct.product_code}</code></span>
+                                        <span>·</span>
+                                        <span>Satuan: <strong>{selectedProduct.uom}</strong></span>
+                                        <span>·</span>
+                                        <span>{selectedProduct.batches.length} batch aktif</span>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setSelectedProduct(null); setSelectedBatchId(''); }}
+                                    className={styles.btnChangeProduct}
+                                >
+                                    Ganti Produk
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Baris 3: Detail Batch, Qty, dan Harga */}
+                        <div className={styles.formGrid3} style={{ marginTop: '16px' }}>
+                            {/* Pilihan Nomor Batch */}
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    <Layers size={14} className={styles.formLabelIcon} />
+                                    Nomor Batch <span className={styles.requiredStar}>*</span>
+                                </label>
+                                <select
+                                    className={styles.formSelect}
+                                    value={selectedBatchId}
+                                    onChange={e => setSelectedBatchId(e.target.value)}
+                                    disabled={!selectedProduct || selectedProduct.batches.length === 0}
+                                    required
+                                >
+                                    <option value="">-- Pilih Batch --</option>
+                                    {selectedProduct?.batches.map(b => (
+                                        <option key={b.stock_ed_id || b.batch_id} value={b.batch_id}>
+                                            {b.batch_id} (ED: {formatDate(b.ed_date)} | Sisa: {b.qty})
+                                        </option>
+                                    ))}
+                                </select>
+                                {selectedBatchInfo ? (
+                                    <div className={styles.helperText}>
+                                        Sisa stok: <strong>{selectedBatchInfo.qty} {selectedProduct?.uom || 'Pcs'}</strong>
+                                    </div>
+                                ) : (
+                                    <div className={styles.helperText}>Pilih produk terlebih dahulu</div>
                                 )}
                             </div>
 
-                            {/* Dropdown Suggestions */}
-                            {productDropdownOpen && filteredProductSuggestions.length > 0 && (
-                                <div style={{
-                                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                                    background: 'var(--surface)', border: '1px solid var(--border)',
-                                    borderRadius: 'var(--radius-sm)', marginTop: '4px',
-                                    boxShadow: 'var(--shadow-md)', maxHeight: '220px', overflowY: 'auto'
-                                }}>
-                                    {filteredProductSuggestions.map(p => (
-                                        <div
-                                            key={p.product_code}
-                                            onClick={() => handleSelectProduct(p)}
-                                            style={{
-                                                padding: '10px 14px', borderBottom: '1px solid var(--border)',
-                                                cursor: 'pointer', fontSize: '0.84rem'
-                                            }}
-                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(37,99,235,0.06)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{p.name}</div>
-                                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'flex', gap: '8px', marginTop: '2px' }}>
-                                                <span>Kode: <code>{p.product_code}</code></span>
-                                                <span>·</span>
-                                                <span>{p.batches.length} batch tersedia</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                            {/* Jumlah Terjual (Qty) */}
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    <ShoppingBag size={14} className={styles.formLabelIcon} />
+                                    Jumlah Terjual (Qty) <span className={styles.requiredStar}>*</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    className={`${styles.formInput} ${isQtyExceeded ? styles.formInputError : ''}`}
+                                    placeholder="0"
+                                    min="0.01"
+                                    step="any"
+                                    max={selectedBatchInfo?.qty || undefined}
+                                    value={qty}
+                                    onChange={e => setQty(e.target.value)}
+                                    required
+                                />
+                                {isQtyExceeded ? (
+                                    <div className={styles.errorText}>
+                                        Melebihi sisa stok (Maks: {selectedBatchInfo.qty})
+                                    </div>
+                                ) : selectedBatchInfo ? (
+                                    <div className={styles.helperText}>Maksimal: {selectedBatchInfo.qty} {selectedProduct?.uom}</div>
+                                ) : null}
+                            </div>
 
-                        {/* Kode Produk / Barcode */}
-                        <div className={styles.field}>
-                            <label className={styles.label}>
-                                <Hash size={13} /> Kode Produk / Barcode
-                            </label>
-                            <input
-                                type="text"
-                                className={styles.input}
-                                placeholder="Scan barcode atau isi kode..."
-                                value={selectedProduct ? selectedProduct.product_code : ''}
-                                onChange={e => handleProductCodeInput(e.target.value)}
-                            />
-                            {selectedProduct && (
-                                <div style={{ fontSize: '0.74rem', color: 'var(--success)', marginTop: '4px' }}>
-                                    ✓ Produk terhubung: <strong>{selectedProduct.name}</strong>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Batch, Qty, Harga Satuan, Total */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-                        {/* Pilihan Batch */}
-                        <div className={styles.field}>
-                            <label className={styles.label}>
-                                Nomor Batch <span style={{ color: 'var(--danger)' }}>*</span>
-                            </label>
-                            <select
-                                className={styles.input}
-                                value={selectedBatchId}
-                                onChange={e => setSelectedBatchId(e.target.value)}
-                                disabled={!selectedProduct || selectedProduct.batches.length === 0}
-                                required
-                            >
-                                <option value="">-- Pilih Batch --</option>
-                                {selectedProduct?.batches.map(b => (
-                                    <option key={b.stock_ed_id || b.batch_id} value={b.batch_id}>
-                                        {b.batch_id} (ED: {formatDate(b.ed_date)} | Sisa: {b.qty})
-                                    </option>
-                                ))}
-                            </select>
-                            {selectedBatchInfo && (
-                                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                    Sisa stok batch: <strong>{selectedBatchInfo.qty} {selectedProduct?.uom || 'Pcs'}</strong>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Qty Terjual */}
-                        <div className={styles.field}>
-                            <label className={styles.label}>
-                                Jumlah Terjual (Qty) <span style={{ color: 'var(--danger)' }}>*</span>
-                            </label>
-                            <input
-                                type="number"
-                                className={styles.input}
-                                placeholder="0"
-                                min="0.01"
-                                step="any"
-                                max={selectedBatchInfo?.qty || undefined}
-                                value={qty}
-                                onChange={e => setQty(e.target.value)}
-                                required
-                                style={isQtyExceeded ? { borderColor: 'var(--danger)' } : {}}
-                            />
-                            {isQtyExceeded && (
-                                <div style={{ fontSize: '0.74rem', color: 'var(--danger)', marginTop: '4px', fontWeight: 600 }}>
-                                    Melebihi sisa stok (Maks: {selectedBatchInfo.qty})
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Harga Satuan (Rp) */}
-                        <div className={styles.field}>
-                            <label className={styles.label}>
-                                <DollarSign size={13} /> Harga Satuan (Rp) <span style={{ color: 'var(--danger)' }}>*</span>
-                            </label>
-                            <input
-                                type="number"
-                                className={styles.input}
-                                placeholder="Contoh: 15000"
-                                min="0"
-                                step="any"
-                                value={unitPrice}
-                                onChange={e => setUnitPrice(e.target.value)}
-                                required
-                            />
-                        </div>
-
-                        {/* Total Penjualan (Rp) - Otomatis */}
-                        <div className={styles.field}>
-                            <label className={styles.label}>
-                                Total Penjualan (Rp)
-                            </label>
-                            <div style={{
-                                height: '38px', display: 'flex', alignItems: 'center', padding: '0 12px',
-                                background: 'var(--surface-sunken, rgba(0,0,0,0.03))',
-                                border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                                fontWeight: 700, fontSize: '0.95rem', color: 'var(--success)'
-                            }}>
-                                {fmtRp(calculatedTotal)}
+                            {/* Harga Satuan (Rp) */}
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    <DollarSign size={14} className={styles.formLabelIcon} />
+                                    Harga Satuan (Rp) <span className={styles.requiredStar}>*</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    className={styles.formInput}
+                                    placeholder="Contoh: 15000"
+                                    min="0"
+                                    step="any"
+                                    value={unitPrice}
+                                    onChange={e => setUnitPrice(e.target.value)}
+                                    required
+                                />
+                                <div className={styles.helperText}>Harga riil sesuai struk kasir</div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Submit Button */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                        <button
-                            type="submit"
-                            disabled={submitting || isQtyExceeded || !selectedProduct || !selectedBatchId}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                                background: 'var(--primary)', border: 'none',
-                                borderRadius: 'var(--radius-sm)', padding: '10px 24px',
-                                fontSize: '0.88rem', fontWeight: 600, color: 'white',
-                                cursor: 'pointer', fontFamily: 'inherit',
-                                opacity: (submitting || isQtyExceeded || !selectedProduct || !selectedBatchId) ? 0.6 : 1,
-                                transition: 'background 0.15s'
-                            }}
-                        >
-                            {submitting ? (
-                                <>
-                                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                                    Menyimpan Penjualan...
-                                </>
-                            ) : (
-                                <>
-                                    <CheckCircle2 size={16} />
-                                    Catat Penjualan & Potong Stok
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </form>
+                        {/* Order Calculation Summary Card & Submit Button */}
+                        <div className={styles.orderSummaryCard}>
+                            <div>
+                                <div className={styles.summaryTotalLabel}>Total Nilai Penjualan</div>
+                                <div className={styles.summaryTotalAmount}>{fmtRp(calculatedTotal)}</div>
+                                <div className={styles.summaryTotalFormula}>
+                                    {qty && unitPrice ? `${qty} item × ${fmtRp(unitPrice)}` : 'Kalkulasi otomatis (Qty × Harga Satuan)'}
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={submitting || isQtyExceeded || !selectedProduct || !selectedBatchId}
+                                className={styles.submitBtn}
+                            >
+                                {submitting ? (
+                                    <>
+                                        <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                                        Menyimpan Penjualan...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 size={18} />
+                                        Catat Penjualan & Potong Stok
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             {/* ── TABEL RIWAYAT PENJUALAN APOTEK ── */}
-            <div className={styles.section}>
-                <div className={styles.sectionHeader} style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div className={styles.tableSection}>
+                <div className={styles.tableToolbar}>
                     <div>
-                        <div className={styles.sectionTitle}>Riwayat Penjualan Produk Short ED</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <div className={styles.tableTitle}>Riwayat Penjualan Produk Short ED</div>
+                        <div className={styles.tableSubtitle}>
                             Daftar transaksi penjualan yang telah tercatat dan memotong stok
                         </div>
                     </div>
 
-                    {/* Filter & Export Toolbar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        {/* Filter Periode */}
+                    <div className={styles.toolbarControls}>
+                        {/* Pilihan Periode */}
                         <select
                             value={periodFilter}
                             onChange={e => setPeriodFilter(e.target.value)}
-                            style={{
-                                height: '36px', padding: '0 10px',
-                                borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--border)',
-                                background: 'var(--surface)', fontSize: '0.82rem', fontFamily: 'inherit'
-                            }}
+                            className={styles.toolbarSelect}
                         >
                             <option value="CURRENT_MONTH">Bulan Berjalan ({getCurrentMonthString()})</option>
                             <option value="LAST_MONTH">Bulan Lalu</option>
@@ -683,48 +677,47 @@ export default function OutletSalesPage() {
                                     type="date"
                                     value={customStartDate}
                                     onChange={e => setCustomStartDate(e.target.value)}
-                                    style={{ height: '36px', padding: '0 6px', borderRadius: '4px', border: '1px solid var(--border)', fontSize: '0.8rem' }}
+                                    className={styles.toolbarSelect}
+                                    style={{ padding: '0 8px' }}
                                 />
-                                <span style={{ fontSize: '0.8rem' }}>s/d</span>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>s/d</span>
                                 <input
                                     type="date"
                                     value={customEndDate}
                                     onChange={e => setCustomEndDate(e.target.value)}
-                                    style={{ height: '36px', padding: '0 6px', borderRadius: '4px', border: '1px solid var(--border)', fontSize: '0.8rem' }}
+                                    className={styles.toolbarSelect}
+                                    style={{ padding: '0 8px' }}
                                 />
                             </div>
                         )}
 
                         {/* Search Riwayat */}
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                            <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
+                        <div className={styles.toolbarSearch}>
+                            <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                             <input
                                 type="text"
                                 placeholder="Cari nama, struk, batch..."
                                 value={tableSearch}
                                 onChange={e => setTableSearch(e.target.value)}
-                                style={{
-                                    height: '36px', paddingLeft: '30px', paddingRight: '10px',
-                                    borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--border)',
-                                    background: 'var(--surface)', fontSize: '0.82rem', width: '180px'
-                                }}
+                                className={styles.toolbarSearchInput}
                             />
+                            {tableSearch && (
+                                <button
+                                    onClick={() => setTableSearch('')}
+                                    style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                                >
+                                    <X size={13} />
+                                </button>
+                            )}
                         </div>
 
                         {/* Tombol Unduh Excel */}
                         <button
                             onClick={handleDownloadExcel}
                             disabled={loadingSales || filteredSales.length === 0}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                background: 'transparent', border: '1.5px solid var(--primary)',
-                                borderRadius: 'var(--radius-sm)', padding: '8px 14px',
-                                fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                                color: 'var(--primary)', fontFamily: 'inherit',
-                                opacity: (loadingSales || filteredSales.length === 0) ? 0.6 : 1
-                            }}
+                            className={styles.btnDownload}
                         >
-                            <Download size={14} />
+                            <Download size={15} />
                             Unduh Excel (.xlsx)
                         </button>
                     </div>
@@ -734,7 +727,7 @@ export default function OutletSalesPage() {
                 <div className={styles.tableWrap}>
                     {loadingSales ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                            <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px', color: 'var(--primary)' }} />
                             <div>Memuat riwayat transaksi...</div>
                         </div>
                     ) : filteredSales.length === 0 ? (
@@ -746,7 +739,7 @@ export default function OutletSalesPage() {
                             <thead>
                                 <tr>
                                     <th>Tanggal Transaksi</th>
-                                    <th>Nomor Struk Kasir</th>
+                                    <th>Nomor Struk</th>
                                     <th>Kode Produk</th>
                                     <th>Nama Produk</th>
                                     <th>Nomor Batch</th>
@@ -762,11 +755,9 @@ export default function OutletSalesPage() {
                                     <tr key={s.id || idx}>
                                         <td style={{ fontWeight: 600 }}>{formatDate(s.transaction_date)}</td>
                                         <td>
-                                            <span style={{ fontFamily: 'monospace', background: 'rgba(0,0,0,0.04)', padding: '2px 6px', borderRadius: '4px' }}>
-                                                {s.receipt_number}
-                                            </span>
+                                            <span className={styles.receiptBadge}>{s.receipt_number}</span>
                                         </td>
-                                        <td><code>{s.product_code}</code></td>
+                                        <td><code className={styles.codeBadge}>{s.product_code}</code></td>
                                         <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
                                             {s.master_products?.item_description || '(Tidak diketahui)'}
                                         </td>
@@ -776,7 +767,7 @@ export default function OutletSalesPage() {
                                             {s.qty}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>{fmtRp(s.unit_price)}</td>
-                                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
+                                        <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--success)' }}>
                                             {fmtRp(s.total_price || (s.qty * s.unit_price))}
                                         </td>
                                         <td style={{ textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -786,8 +777,8 @@ export default function OutletSalesPage() {
                                 ))}
                             </tbody>
                             <tfoot>
-                                <tr style={{ background: 'var(--surface-sunken, rgba(0,0,0,0.04))', fontWeight: 800 }}>
-                                    <td colSpan={6} style={{ textAlign: 'right', padding: '12px 16px' }}>
+                                <tr className={styles.tableFooterRow}>
+                                    <td colSpan={6} style={{ textAlign: 'right' }}>
                                         GRAND TOTAL PENJUALAN:
                                     </td>
                                     <td style={{ textAlign: 'right', color: 'var(--primary)', fontSize: '0.95rem' }}>
@@ -804,6 +795,8 @@ export default function OutletSalesPage() {
                     )}
                 </div>
             </div>
+
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
     );
 }

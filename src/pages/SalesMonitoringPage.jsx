@@ -1,17 +1,18 @@
 /**
  * SalesMonitoringPage.jsx — Monitoring & Rekap Penjualan Produk Short ED (Multi-Outlet)
  * Digunakan oleh role Area Manager (AM) dan BOD / Manajemen.
+ * Desain UI/UX Modern, Bersih, dan Responsif Mobile-First (Design System Apotek Alpro).
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-    Receipt, Calendar, Building2, UserCheck, TrendingUp,
+    Receipt, Calendar, Building2, TrendingUp,
     ShoppingBag, Download, RefreshCw, Search, X, Loader2
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { fetchAMOutlets } from '../services/amService';
 import { fetchAMSales, fetchAllSales, exportSalesToExcel } from '../services/salesService';
-import styles from './OutletInputPage.module.css';
+import styles from './OutletSalesPage.module.css';
 
 function fmtRp(val) {
     const num = parseFloat(val) || 0;
@@ -185,7 +186,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
     return (
         <div className="fade-up">
             {/* Page Header */}
-            <div className={styles.pageHeader} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div className={styles.pageHeader}>
                 <div>
                     <h2 className={styles.pageTitle}>
                         {isBOD ? 'Rekap Penjualan Short ED (Nasional)' : 'Rekap Penjualan Short ED (Area)'}
@@ -200,14 +201,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                 <button
                     onClick={loadData}
                     disabled={loading}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                        background: 'var(--surface)', border: '1.5px solid var(--border)',
-                        borderRadius: 'var(--radius-sm)', padding: '8px 14px',
-                        fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                        color: 'var(--text-sub)', fontFamily: 'inherit',
-                        opacity: loading ? 0.6 : 1,
-                    }}
+                    className={styles.btnRefresh}
                 >
                     <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
                     Segarkan Data
@@ -219,7 +213,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                 <div className={styles.kpiCard}>
                     <div className={styles.kpiHeader}>
                         <span className={styles.kpiLabel}>Total Terjual</span>
-                        <div className={`${styles.kpiIconWrap} ${styles.blue}`}><ShoppingBag size={15} /></div>
+                        <div className={`${styles.kpiIconWrap} ${styles.iconBlue}`}><ShoppingBag size={16} /></div>
                     </div>
                     <div className={styles.kpiValue}>{loading ? '…' : totalItemsSold}</div>
                     <div className={styles.kpiMeta}>Pcs / Box terealisasi</div>
@@ -228,9 +222,9 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                 <div className={styles.kpiCard}>
                     <div className={styles.kpiHeader}>
                         <span className={styles.kpiLabel}>Total Omzet Penjualan</span>
-                        <div className={`${styles.kpiIconWrap} ${styles.green}`}><TrendingUp size={15} /></div>
+                        <div className={`${styles.kpiIconWrap} ${styles.iconGreen}`}><TrendingUp size={16} /></div>
                     </div>
-                    <div className={styles.kpiValue} style={{ fontSize: '1.25rem', color: 'var(--success)' }}>
+                    <div className={styles.kpiValue} style={{ color: 'var(--success)' }}>
                         {loading ? '…' : fmtRp(totalRevenue)}
                     </div>
                     <div className={styles.kpiMeta}>Nilai penjualan diselamatkan</div>
@@ -239,7 +233,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                 <div className={styles.kpiCard}>
                     <div className={styles.kpiHeader}>
                         <span className={styles.kpiLabel}>Total Struk Kasir</span>
-                        <div className={`${styles.kpiIconWrap} ${styles.amber}`}><Receipt size={15} /></div>
+                        <div className={`${styles.kpiIconWrap} ${styles.iconAmber}`}><Receipt size={16} /></div>
                     </div>
                     <div className={styles.kpiValue}>{loading ? '…' : totalReceiptsCount}</div>
                     <div className={styles.kpiMeta}>Nomor transaksi tercatat</div>
@@ -248,7 +242,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                 <div className={styles.kpiCard}>
                     <div className={styles.kpiHeader}>
                         <span className={styles.kpiLabel}>Apotek Aktif Jual</span>
-                        <div className={`${styles.kpiIconWrap} ${styles.blue}`}><Building2 size={15} /></div>
+                        <div className={`${styles.kpiIconWrap} ${styles.iconBlue}`}><Building2 size={16} /></div>
                     </div>
                     <div className={styles.kpiValue}>{loading ? '…' : `${activeOutletsCount} Apotek`}</div>
                     <div className={styles.kpiMeta}>Telah melaporkan penjualan</div>
@@ -256,27 +250,23 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
             </div>
 
             {/* Table Section */}
-            <div className={styles.section}>
-                <div className={styles.sectionHeader} style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div className={styles.tableSection}>
+                <div className={styles.tableToolbar}>
                     <div>
-                        <div className={styles.sectionTitle}>Tabel Detail Penjualan Short ED</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <div className={styles.tableTitle}>Tabel Detail Penjualan Short ED</div>
+                        <div className={styles.tableSubtitle}>
                             {filteredSales.length} transaksi ditampilkan
                         </div>
                     </div>
 
-                    {/* Filter & Action Controls */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* Controls */}
+                    <div className={styles.toolbarControls}>
                         {/* BOD: Filter Area Manager */}
                         {isBOD && amList.length > 0 && (
                             <select
                                 value={selectedAM}
                                 onChange={e => { setSelectedAM(e.target.value); setSelectedOutlet('ALL'); }}
-                                style={{
-                                    height: '36px', padding: '0 10px',
-                                    borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--border)',
-                                    background: 'var(--surface)', fontSize: '0.82rem', fontFamily: 'inherit'
-                                }}
+                                className={styles.toolbarSelect}
                             >
                                 <option value="ALL">Semua Area Manager</option>
                                 {amList.map(am => (
@@ -289,11 +279,8 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                         <select
                             value={selectedOutlet}
                             onChange={e => setSelectedOutlet(e.target.value)}
-                            style={{
-                                height: '36px', padding: '0 10px', maxWidth: '200px',
-                                borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--border)',
-                                background: 'var(--surface)', fontSize: '0.82rem', fontFamily: 'inherit'
-                            }}
+                            className={styles.toolbarSelect}
+                            style={{ maxWidth: '200px' }}
                         >
                             <option value="ALL">Semua Apotek</option>
                             {outletList.map(o => (
@@ -307,11 +294,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                         <select
                             value={periodFilter}
                             onChange={e => setPeriodFilter(e.target.value)}
-                            style={{
-                                height: '36px', padding: '0 10px',
-                                borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--border)',
-                                background: 'var(--surface)', fontSize: '0.82rem', fontFamily: 'inherit'
-                            }}
+                            className={styles.toolbarSelect}
                         >
                             <option value="CURRENT_MONTH">Bulan Berjalan ({getCurrentMonthString()})</option>
                             <option value="LAST_MONTH">Bulan Lalu</option>
@@ -326,48 +309,47 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                                     type="date"
                                     value={customStartDate}
                                     onChange={e => setCustomStartDate(e.target.value)}
-                                    style={{ height: '36px', padding: '0 6px', borderRadius: '4px', border: '1px solid var(--border)', fontSize: '0.8rem' }}
+                                    className={styles.toolbarSelect}
+                                    style={{ padding: '0 8px' }}
                                 />
-                                <span style={{ fontSize: '0.8rem' }}>s/d</span>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>s/d</span>
                                 <input
                                     type="date"
                                     value={customEndDate}
                                     onChange={e => setCustomEndDate(e.target.value)}
-                                    style={{ height: '36px', padding: '0 6px', borderRadius: '4px', border: '1px solid var(--border)', fontSize: '0.8rem' }}
+                                    className={styles.toolbarSelect}
+                                    style={{ padding: '0 8px' }}
                                 />
                             </div>
                         )}
 
                         {/* Search Input */}
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                            <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
+                        <div className={styles.toolbarSearch}>
+                            <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                             <input
                                 type="text"
                                 placeholder="Cari apotek, obat, struk..."
                                 value={tableSearch}
                                 onChange={e => setTableSearch(e.target.value)}
-                                style={{
-                                    height: '36px', paddingLeft: '30px', paddingRight: '10px',
-                                    borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--border)',
-                                    background: 'var(--surface)', fontSize: '0.82rem', width: '180px'
-                                }}
+                                className={styles.toolbarSearchInput}
                             />
+                            {tableSearch && (
+                                <button
+                                    onClick={() => setTableSearch('')}
+                                    style={{ position: 'absolute', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                                >
+                                    <X size={13} />
+                                </button>
+                            )}
                         </div>
 
                         {/* Unduh Excel */}
                         <button
                             onClick={handleDownloadExcel}
                             disabled={loading || filteredSales.length === 0}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                background: 'transparent', border: '1.5px solid var(--primary)',
-                                borderRadius: 'var(--radius-sm)', padding: '8px 14px',
-                                fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                                color: 'var(--primary)', fontFamily: 'inherit',
-                                opacity: (loading || filteredSales.length === 0) ? 0.6 : 1
-                            }}
+                            className={styles.btnDownload}
                         >
-                            <Download size={14} />
+                            <Download size={15} />
                             Unduh Excel (.xlsx)
                         </button>
                     </div>
@@ -377,7 +359,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                 <div className={styles.tableWrap}>
                     {loading ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                            <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px', color: 'var(--primary)' }} />
                             <div>Memuat data penjualan...</div>
                         </div>
                     ) : error ? (
@@ -418,11 +400,9 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                                         </td>
                                         <td style={{ fontWeight: 600 }}>{formatDate(s.transaction_date)}</td>
                                         <td>
-                                            <span style={{ fontFamily: 'monospace', background: 'rgba(0,0,0,0.04)', padding: '2px 6px', borderRadius: '4px' }}>
-                                                {s.receipt_number}
-                                            </span>
+                                            <span className={styles.receiptBadge}>{s.receipt_number}</span>
                                         </td>
-                                        <td><code>{s.product_code}</code></td>
+                                        <td><code className={styles.codeBadge}>{s.product_code}</code></td>
                                         <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
                                             {s.master_products?.item_description || '(Tidak diketahui)'}
                                         </td>
@@ -432,7 +412,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                                             {s.qty}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>{fmtRp(s.unit_price)}</td>
-                                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
+                                        <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--success)' }}>
                                             {fmtRp(s.total_price || (s.qty * s.unit_price))}
                                         </td>
                                         <td style={{ textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -442,8 +422,8 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                                 ))}
                             </tbody>
                             <tfoot>
-                                <tr style={{ background: 'var(--surface-sunken, rgba(0,0,0,0.04))', fontWeight: 800 }}>
-                                    <td colSpan={7} style={{ textAlign: 'right', padding: '12px 16px' }}>
+                                <tr className={styles.tableFooterRow}>
+                                    <td colSpan={7} style={{ textAlign: 'right' }}>
                                         GRAND TOTAL PENJUALAN:
                                     </td>
                                     <td style={{ textAlign: 'right', color: 'var(--primary)', fontSize: '0.95rem' }}>
