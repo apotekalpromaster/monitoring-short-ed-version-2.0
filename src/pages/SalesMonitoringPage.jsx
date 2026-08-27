@@ -130,12 +130,11 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                 const name = (s.master_products?.item_description || '').toLowerCase();
                 const code = (s.product_code || '').toLowerCase();
                 const receipt = (s.receipt_number || '').toLowerCase();
-                const batch = (s.batch_id || '').toLowerCase();
                 const outletName = (s.outlet_name || '').toLowerCase();
                 const outletCode = (s.outlet_code || '').toLowerCase();
 
                 const match = name.includes(q) || code.includes(q) || receipt.includes(q) ||
-                    batch.includes(q) || outletName.includes(q) || outletCode.includes(q);
+                    outletName.includes(q) || outletCode.includes(q);
                 if (!match) return false;
             }
 
@@ -227,7 +226,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                     <div className={styles.kpiValue} style={{ color: 'var(--success)' }}>
                         {loading ? '…' : fmtRp(totalRevenue)}
                     </div>
-                    <div className={styles.kpiMeta}>Nilai penjualan diselamatkan</div>
+                    <div className={styles.kpiMeta}>Nilai penjualan terealisasi</div>
                 </div>
 
                 <div className={styles.kpiCard}>
@@ -250,11 +249,11 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
             </div>
 
             {/* Table Section */}
-            <div className={styles.tableSection}>
-                <div className={styles.tableToolbar}>
+            <div className={styles.historySection}>
+                <div className={styles.historyToolbar}>
                     <div>
-                        <div className={styles.tableTitle}>Tabel Detail Penjualan Short ED</div>
-                        <div className={styles.tableSubtitle}>
+                        <div className={styles.historyTitle}>Tabel Detail Penjualan Short ED</div>
+                        <div className={styles.historySubtitle}>
                             {filteredSales.length} transaksi ditampilkan
                         </div>
                     </div>
@@ -325,7 +324,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
 
                         {/* Search Input */}
                         <div className={styles.toolbarSearch}>
-                            <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                            <Search size={13} style={{ position: 'absolute', left: '9px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                             <input
                                 type="text"
                                 placeholder="Cari apotek, obat, struk..."
@@ -349,14 +348,14 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                             disabled={loading || filteredSales.length === 0}
                             className={styles.btnDownload}
                         >
-                            <Download size={15} />
+                            <Download size={14} />
                             Unduh Excel (.xlsx)
                         </button>
                     </div>
                 </div>
 
                 {/* Table Body */}
-                <div className={styles.tableWrap}>
+                <div className={styles.historyTableWrap}>
                     {loading ? (
                         <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                             <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px', color: 'var(--primary)' }} />
@@ -371,7 +370,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                             Tidak ada data penjualan pada filter periode yang dipilih.
                         </div>
                     ) : (
-                        <table className={styles.table}>
+                        <table className={styles.historyTable}>
                             <thead>
                                 <tr>
                                     <th>Nama Apotek</th>
@@ -379,8 +378,6 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                                     <th>Nomor Struk</th>
                                     <th>Kode Produk</th>
                                     <th>Nama Produk</th>
-                                    <th>Nomor Batch</th>
-                                    <th>Tanggal ED</th>
                                     <th style={{ textAlign: 'right' }}>Qty Terjual</th>
                                     <th style={{ textAlign: 'right' }}>Harga Satuan</th>
                                     <th style={{ textAlign: 'right' }}>Total Penjualan</th>
@@ -406,8 +403,6 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                                         <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
                                             {s.master_products?.item_description || '(Tidak diketahui)'}
                                         </td>
-                                        <td style={{ fontFamily: 'monospace' }}>{s.batch_id}</td>
-                                        <td>{formatDate(s.ed_date)}</td>
                                         <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--primary)' }}>
                                             {s.qty}
                                         </td>
@@ -423,7 +418,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                             </tbody>
                             <tfoot>
                                 <tr className={styles.tableFooterRow}>
-                                    <td colSpan={7} style={{ textAlign: 'right' }}>
+                                    <td colSpan={5} style={{ textAlign: 'right' }}>
                                         GRAND TOTAL PENJUALAN:
                                     </td>
                                     <td style={{ textAlign: 'right', color: 'var(--primary)', fontSize: '0.95rem' }}>

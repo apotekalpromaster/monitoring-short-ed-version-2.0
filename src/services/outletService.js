@@ -106,9 +106,9 @@ export async function isProductExcluded(productCode) {
  *  - `input_period` diisi dengan format YYYY-MM (period laporan).
  */
 export async function saveStockEntry({ outletCode, productCode, batchId, edDate, qty, remark }) {
-    // Hardcoded Period Validation: 1 Sep 2025 - 31 Mar 2027
-    if (edDate < '2025-09-01' || edDate > '2027-03-31') {
-        throw new Error('Tanggal ED di luar periode yang diizinkan (1 Sep 2025 - 31 Mar 2027).');
+    // Hardcoded Period Validation: 1 Sep 2025 - 30 Sep 2027
+    if (edDate < '2025-09-01' || edDate > '2027-09-30') {
+        throw new Error('Tanggal ED di luar periode yang diizinkan (1 Sep 2025 - 30 Sep 2027).');
     }
 
     const formattedBatch = batchId.trim().toUpperCase();
@@ -140,9 +140,9 @@ export async function saveBulkStockEntries(outletCode, records) {
     if (!records || records.length === 0) return { success: true };
 
     // Hardcoded Period Validation for Bulk
-    const invalidRecords = records.filter(r => r.edDate < '2025-09-01' || r.edDate > '2027-03-31');
+    const invalidRecords = records.filter(r => r.edDate < '2025-09-01' || r.edDate > '2027-09-30');
     if (invalidRecords.length > 0) {
-        throw new Error(`${invalidRecords.length} data ditolak karena di luar periode 1 Sep 2025 - 31 Mar 2027.`);
+        throw new Error(`${invalidRecords.length} data ditolak karena di luar periode 1 Sep 2025 - 30 Sep 2027.`);
     }
 
     const payload = records.map(r => {
@@ -183,7 +183,6 @@ export async function saveBulkStockEntries(outletCode, records) {
         totalInserted += chunk.length;
 
         // Beri jeda 150ms antar request agar CPU Supabase VM dan PgBouncer punya waktu 'bernapas'
-        // Sangat krusial untuk skenario ratusan Outlet upload CSV bersamaan di hari H penutupan.
         if (i + CHUNK_SIZE < payload.length) {
             await new Promise(resolve => setTimeout(resolve, 150));
         }
@@ -198,8 +197,8 @@ export async function saveBulkStockEntries(outletCode, records) {
  */
 export async function updateStockEntry(id, { batchId, edDate, qty, remark }) {
     // Hardcoded Period Validation
-    if (edDate < '2025-09-01' || edDate > '2027-03-31') {
-        throw new Error('Gagal update: Tanggal ED di luar periode yang diizinkan (1 Sep 2025 - 31 Mar 2027).');
+    if (edDate < '2025-09-01' || edDate > '2027-09-30') {
+        throw new Error('Gagal update: Tanggal ED di luar periode yang diizinkan (1 Sep 2025 - 30 Sep 2027).');
     }
 
     const formattedBatch = batchId.trim().toUpperCase();
@@ -269,8 +268,6 @@ export async function fetchOutletStocks(outletCode) {
         for (let i = 0; i < uniqueProductCodes.length; i += chunkSize) {
             const chunk = uniqueProductCodes.slice(i, i + chunkSize);
 
-            // Supabase client lebih aman memakai .in() dengan array langsung dibanding .or(string)
-            // Sesuai instruksi User: HANYA HANYA Lookup ke Barcode!
             const { data: bCodeData } = await supabase
                 .from('master_products')
                 .select('*')
@@ -278,7 +275,6 @@ export async function fetchOutletStocks(outletCode) {
 
             if (bCodeData) {
                 bCodeData.forEach(p => {
-                    // productMap mengandalkan barcode sebagai kunci pencocokan utama
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }

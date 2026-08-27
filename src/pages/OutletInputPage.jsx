@@ -126,15 +126,12 @@ export default function OutletInputPage() {
     const [toast, setToast] = useState(null); // { message, type }
 
     const searchRef = useRef(null);
-    const batchRef = useRef(null);  // auto-focus ke Batch setelah scan
+    const batchRef = useRef(null);
     const debouncedQuery = useDebounce(query, 350);
 
-    // Physical scanner detection:
-    // Scanner fisik bekerja seperti keystrokes sangat cepat (interval < 50ms) diakhiri Enter.
     const physicalScanBuffer = useRef('');
     const lastKeyTime = useRef(0);
 
-    // Camera scanner state
     const [cameraScanOpen, setCameraScanOpen] = useState(false);
 
     // ── Fetch suggestions when query changes ──
@@ -147,13 +144,12 @@ export default function OutletInputPage() {
 
         let active = true;
         setSearching(true);
-        setShowDropdown(true); // Tampilkan dropdown segera agar "Mencari..." terlihat
+        setShowDropdown(true);
 
         searchProducts(debouncedQuery)
             .then((results) => {
                 if (active) {
                     setSuggestions(results);
-                    // Dropdown tetap true agar bisa menampilkan "Tidak ditemukan" jika empty
                 }
             })
             .catch((err) => {
@@ -178,7 +174,7 @@ export default function OutletInputPage() {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // ── Barcode scan result handler (camera & physical) ──
+    // ── Barcode scan result handler ──
     async function handleBarcodeScanned(barcode) {
         setCameraScanOpen(false);
         showToast('Mencari produk...', 'info');
@@ -187,7 +183,6 @@ export default function OutletInputPage() {
             if (product) {
                 selectProduct(product);
                 showToast(`Produk ditemukan: ${product.item_description}`, 'success');
-                // Auto-focus ke kolom Batch setelah produk terpilih
                 setTimeout(() => batchRef.current?.focus(), 80);
             } else {
                 showToast(`Barcode "${barcode}" tidak terdaftar di Master Produk.`, 'error');
@@ -197,8 +192,6 @@ export default function OutletInputPage() {
         }
     }
 
-    // ── Physical barcode scanner detection ──
-    // Scanner fisik mengirim keystrokes sangat cepat (< 50ms antar karakter) + Enter.
     function handleSearchKeyDown(e) {
         const now = Date.now();
         const timeDiff = now - lastKeyTime.current;
@@ -208,14 +201,11 @@ export default function OutletInputPage() {
             e.preventDefault();
             const buf = physicalScanBuffer.current;
             physicalScanBuffer.current = '';
-            // Hanya proses sebagai barcode jika buffer terisi (>= 4 char)
             if (buf.length >= 4) {
-                // input cepat = physical scanner, query by barcode
                 handleBarcodeScanned(buf);
                 setQuery('');
             }
         } else if (e.key.length === 1) {
-            // Akumulasi buffer. Reset jika jeda > 100ms (user mengetik manual)
             if (timeDiff > 100) physicalScanBuffer.current = '';
             physicalScanBuffer.current += e.key;
         }
@@ -237,12 +227,10 @@ export default function OutletInputPage() {
 
     useEffect(() => { loadStocks(); }, [loadStocks]);
 
-    // ── Toast helper ──
     function showToast(message, type = 'info') {
         setToast({ message, type });
     }
 
-    // ── Select product from dropdown ──
     function selectProduct(product) {
         setSelectedProduct(product);
         setQuery('');
@@ -250,13 +238,11 @@ export default function OutletInputPage() {
         setShowDropdown(false);
     }
 
-    // ── Clear selected product ──
     function clearProduct() {
         setSelectedProduct(null);
         setQuery('');
     }
 
-    // ── Form field change ──
     function handleFormChange(e) {
         const { name, value } = e.target;
         setForm(prev => ({ ...prev, [name]: value }));
@@ -283,9 +269,9 @@ export default function OutletInputPage() {
             return;
         }
 
-        // Hardcoded Period Validation: 1 Sep 2025 - 31 Mar 2027
-        if (form.edDate < '2025-09-01' || form.edDate > '2027-03-31') {
-            showToast('Tanggal ED di luar periode yang diizinkan (1 Sep 2025 - 31 Mar 2027).', 'error');
+        // Hardcoded Period Validation: 1 Sep 2025 - 30 Sep 2027
+        if (form.edDate < '2025-09-01' || form.edDate > '2027-09-30') {
+            showToast('Tanggal ED di luar periode yang diizinkan (1 Sep 2025 - 30 Sep 2027).', 'error');
             return;
         }
 
@@ -293,18 +279,16 @@ export default function OutletInputPage() {
         showToast('Memeriksa produk...', 'info');
 
         try {
-            // 1. Cek procode_exclude (logika validasi dari Code.gs)
             const excluded = await isProductExcluded(selectedProduct.product_code);
             if (excluded) {
                 showToast(
-                    `Produk ${selectedProduct.description} terdaftar dalam Daftar Pengecualian (Non-ED). Input tidak diizinkan.`,
+                    `Produk ${selectedProduct.item_description || selectedProduct.description} terdaftar dalam Daftar Pengecualian (Non-ED). Input tidak diizinkan.`,
                     'error'
                 );
                 setSubmitting(false);
                 return;
             }
 
-            // 2. Simpan ke stocks_ed (menggunakan barcode jika ada)
             const finalCodeToSave = selectedProduct.barcode || selectedProduct.product_code;
             await saveStockEntry({
                 outletCode: user.code,
@@ -317,11 +301,9 @@ export default function OutletInputPage() {
 
             showToast('Data berhasil disimpan!', 'success');
 
-            // 3. Reset form
             setSelectedProduct(null);
             setForm(EMPTY_FORM);
 
-            // 4. Reload riwayat
             await loadStocks();
 
         } catch (err) {
@@ -331,7 +313,6 @@ export default function OutletInputPage() {
         }
     }
 
-    // ── Compute KPI dari data riwayat ──
     const totalItem = stocks.length;
     const critisCount = stocks.filter(s => {
         const cat = getEdCategory(s.ed_date);
@@ -343,7 +324,6 @@ export default function OutletInputPage() {
     }).length;
     const terkumpulCount = stocks.filter(s => getEdCategory(s.ed_date) === 'terkumpul').length;
 
-    // ── Kelompokkan stok per kategori ──
     const grouped = {};
     stocks.forEach(s => {
         const cat = getEdCategory(s.ed_date);
@@ -355,7 +335,6 @@ export default function OutletInputPage() {
 
     return (
         <div className="fade-up">
-            {/* Toast */}
             {toast && (
                 <Toast
                     message={toast.message}
@@ -364,7 +343,6 @@ export default function OutletInputPage() {
                 />
             )}
 
-            {/* Page Header */}
             <div className={styles.pageHeader}>
                 <h2 className={styles.pageTitle}>Input Data Produk Short ED</h2>
                 <p className={styles.pageSubtitle}>
@@ -372,7 +350,6 @@ export default function OutletInputPage() {
                 </p>
             </div>
 
-            {/* KPI Cards — dihitung dari data riwayat */}
             <div className={styles.kpiGrid}>
                 <div className={styles.kpiCard}>
                     <div className={styles.kpiHeader}>
@@ -423,10 +400,8 @@ export default function OutletInputPage() {
                         {/* Product Search */}
                         {!selectedProduct ? (
                             <div className={styles.searchWrap} ref={searchRef}>
-                                {/* Search icon */}
                                 <Search size={16} className={styles.searchIcon} />
 
-                                {/* Input: handles manual typing + physical barcode scanner */}
                                 <input
                                     type="text"
                                     placeholder="Ketik nama produk atau scan barcode..."
@@ -438,7 +413,6 @@ export default function OutletInputPage() {
                                     onKeyDown={handleSearchKeyDown}
                                 />
 
-                                {/* Camera scanner button */}
                                 <button
                                     type="button"
                                     onClick={() => setCameraScanOpen(true)}
@@ -569,7 +543,6 @@ export default function OutletInputPage() {
                 </div>
             </div>
 
-            {/* ── Camera Barcode Modal ── */}
             <BarcodeModal
                 isOpen={cameraScanOpen}
                 onScan={handleBarcodeScanned}

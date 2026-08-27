@@ -479,6 +479,84 @@
     color: white;
 }
 
+/* ── Edit Mode Banner ── */
+.editModeBanner {
+    background: #eff6ff;
+    border: 1.5px solid #3b82f6;
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.editModeTitle {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #1d4ed8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btnCancelEdit {
+    background: white;
+    border: 1.2px solid #93c5fd;
+    color: #1d4ed8;
+    font-size: 0.74rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all var(--duration);
+    white-space: nowrap;
+}
+
+.btnCancelEdit:hover {
+    background: #dbeafe;
+}
+
+/* ── Action Button Group in Form ── */
+.actionBtnGroup {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.btnSaveEdit {
+    flex: 1;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #2563eb;
+    color: white;
+    font-size: 0.88rem;
+    font-weight: 700;
+    font-family: inherit;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    transition: all var(--duration);
+}
+
+.btnSaveEdit:hover:not(:disabled) {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.btnSaveEdit:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 /* ── Item Subtotal Live Preview Bar ── */
 .itemSubtotalBanner {
     display: flex;
@@ -604,6 +682,34 @@
 
 .receiptTable tbody tr:hover {
     background: rgba(249, 115, 22, 0.03);
+}
+
+.receiptRowEditing {
+    background: #eff6ff !important;
+}
+
+.actionCell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.btnEditItem {
+    background: none;
+    border: none;
+    color: #2563eb;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--duration);
+}
+
+.btnEditItem:hover {
+    background: #dbeafe;
 }
 
 .btnTrashItem {
@@ -916,6 +1022,7 @@
     .formSelect,
     .searchInput,
     .btnAddItem,
+    .btnSaveEdit,
     .btnSubmitReceipt {
         height: 46px;
     }

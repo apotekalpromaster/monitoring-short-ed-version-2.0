@@ -3,22 +3,18 @@ import * as XLSX from 'xlsx';
 
 /**
  * salesService.js
- * Modul layanan transaksi dan data penjualan produk Short ED.
+ * Modul layanan transaksi dan data penjualan produk Short ED (Sistem Pencatatan Mandiri).
+ * Tidak memotong/mengubah data pada tabel stocks_ed.
  */
 
 /**
- * Mencatat transaksi penjualan single-item short ED dan memotong stok di stocks_ed.
- * Mengutamakan RPC Stored Procedure atomik `fn_record_short_ed_sale`.
- * Memiliki fallback otomatis ke direct transaction jika RPC belum di-create di Supabase.
+ * Mencatat transaksi penjualan single-item ke tabel sales_short_ed secara mandiri.
  */
 export async function recordShortEdSale({
     outletCode,
-    stockEdId,
     transactionDate,
     receiptNumber,
     productCode,
-    batchId,
-    edDate,
     qty,
     unitPrice,
     createdBy = ''
@@ -27,7 +23,6 @@ export async function recordShortEdSale({
     if (!transactionDate) throw new Error('Tanggal transaksi wajib diisi.');
     if (!receiptNumber || !receiptNumber.trim()) throw new Error('Nomor struk kasir wajib diisi.');
     if (!productCode) throw new Error('Kode produk wajib diisi.');
-    if (!batchId || !batchId.trim()) throw new Error('Nomor batch wajib diisi.');
     const numericQty = parseFloat(qty);
     const numericPrice = parseFloat(unitPrice);
 
@@ -35,91 +30,21 @@ export async function recordShortEdSale({
     if (isNaN(numericPrice) || numericPrice < 0) throw new Error('Harga satuan tidak boleh negatif.');
 
     const cleanReceipt = receiptNumber.trim();
-    const cleanBatch = batchId.trim().toUpperCase();
     const cleanProduct = String(productCode).trim();
     const inputPeriod = transactionDate.slice(0, 7); // 'YYYY-MM'
     const totalPrice = Math.round(numericQty * numericPrice * 100) / 100;
 
-    // 1. Coba panggil RPC PostgreSQL
-    try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc('fn_record_short_ed_sale', {
-            p_outlet_code: outletCode,
-            p_stock_ed_id: stockEdId ? String(stockEdId) : null,
-            p_transaction_date: transactionDate,
-            p_receipt_number: cleanReceipt,
-            p_product_code: cleanProduct,
-            p_batch_id: cleanBatch,
-            p_ed_date: edDate || null,
-            p_qty: numericQty,
-            p_unit_price: numericPrice,
-            p_created_by: createdBy
-        });
-
-        if (!rpcError && rpcData) {
-            return {
-                success: true,
-                saleId: rpcData.sale_id,
-                remainingStock: rpcData.remaining_stock,
-                message: rpcData.message || 'Penjualan berhasil dicatat.'
-            };
-        }
-
-        if (rpcError && !rpcError.message.includes('function') && !rpcError.message.includes('does not exist')) {
-            throw rpcError;
-        }
-    } catch (err) {
-        if (!err.message.includes('function') && !err.message.includes('does not exist')) {
-            throw err;
-        }
-        console.warn('RPC fn_record_short_ed_sale belum terpasang, beralih ke direct client transaction fallback.');
-    }
-
-    // 2. Fallback Direct Transaction
-    let currentStockRow = null;
-    if (stockEdId) {
-        const { data, error } = await supabase
-            .from('stocks_ed')
-            .select('id, qty')
-            .eq('id', stockEdId)
-            .eq('outlet_code', outletCode)
-            .maybeSingle();
-        if (error) throw error;
-        currentStockRow = data;
-    }
-
-    if (!currentStockRow) {
-        const { data, error } = await supabase
-            .from('stocks_ed')
-            .select('id, qty')
-            .eq('outlet_code', outletCode)
-            .eq('product_code', cleanProduct)
-            .ilike('batch_id', cleanBatch)
-            .order('ed_date', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-        if (error) throw error;
-        currentStockRow = data;
-    }
-
-    if (!currentStockRow) {
-        throw new Error(`Data stok produk ${cleanProduct} batch ${cleanBatch} tidak ditemukan di sistem monitoring apotek.`);
-    }
-
-    if (parseFloat(currentStockRow.qty) < numericQty) {
-        throw new Error(`Jumlah penjualan (${numericQty}) melebihi sisa stok yang tercatat (${currentStockRow.qty}).`);
-    }
-
-    // Insert ke sales_short_ed
+    // Pure Insert ke tabel sales_short_ed (tanpa memotong stocks_ed)
     const { data: insertedSale, error: insertErr } = await supabase
         .from('sales_short_ed')
         .insert({
             outlet_code: outletCode,
-            stock_ed_id: currentStockRow.id,
+            stock_ed_id: null,
             transaction_date: transactionDate,
             receipt_number: cleanReceipt,
             product_code: cleanProduct,
-            batch_id: cleanBatch,
-            ed_date: edDate || null,
+            batch_id: '-',
+            ed_date: null,
             qty: numericQty,
             unit_price: numericPrice,
             total_price: totalPrice,
@@ -131,22 +56,10 @@ export async function recordShortEdSale({
 
     if (insertErr) throw insertErr;
 
-    // Kurangi stok di stocks_ed
-    const newQty = Math.max(0, parseFloat(currentStockRow.qty) - numericQty);
-    const { error: updateErr } = await supabase
-        .from('stocks_ed')
-        .update({ qty: newQty })
-        .eq('id', currentStockRow.id);
-
-    if (updateErr) {
-        console.error('Gagal update stok setelah insert penjualan:', updateErr);
-    }
-
     return {
         success: true,
         saleId: insertedSale.id,
-        remainingStock: newQty,
-        message: 'Penjualan berhasil dicatat dan stok monitoring telah diperbarui.'
+        message: 'Penjualan berhasil dicatat.'
     };
 }
 
@@ -171,12 +84,9 @@ export async function recordBulkShortEdSales({
     for (const item of items) {
         const res = await recordShortEdSale({
             outletCode,
-            stockEdId: item.stockEdId,
             transactionDate,
             receiptNumber,
             productCode: item.productCode,
-            batchId: item.batchId,
-            edDate: item.edDate,
             qty: item.qty,
             unitPrice: item.unitPrice,
             createdBy
@@ -228,13 +138,14 @@ export async function fetchOutletSales(outletCode, { period, startDate, endDate 
         const chunkSize = 100;
         for (let i = 0; i < uniqueProductCodes.length; i += chunkSize) {
             const chunk = uniqueProductCodes.slice(i, i + chunkSize);
-            const { data: bCodeData } = await supabase
+            const { data: pData } = await supabase
                 .from('master_products')
                 .select('product_code, barcode, item_description, uom')
-                .in('barcode', chunk);
+                .in('product_code', chunk);
 
-            if (bCodeData) {
-                bCodeData.forEach(p => {
+            if (pData) {
+                pData.forEach(p => {
+                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }
@@ -305,10 +216,11 @@ export async function fetchAMSales(outletCodes, { period, startDate, endDate } =
             const { data: pData } = await supabase
                 .from('master_products')
                 .select('product_code, barcode, item_description, uom')
-                .in('barcode', chunk);
+                .in('product_code', chunk);
 
             if (pData) {
                 pData.forEach(p => {
+                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }
@@ -382,10 +294,11 @@ export async function fetchAllSales({ period, startDate, endDate } = {}) {
             const { data: pData } = await supabase
                 .from('master_products')
                 .select('product_code, barcode, item_description, uom')
-                .in('barcode', chunk);
+                .in('product_code', chunk);
 
             if (pData) {
                 pData.forEach(p => {
+                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }
@@ -401,7 +314,7 @@ export async function fetchAllSales({ period, startDate, endDate } = {}) {
 }
 
 /**
- * Ekspor data penjualan ke file Excel (.xlsx) dengan SheetJS.
+ * Ekspor data penjualan ke file Excel (.xlsx) dengan SheetJS (Tanpa Nomor Batch dan Tanggal ED).
  */
 export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Short_ED', isMultiOutlet = false } = {}) {
     if (!salesList || salesList.length === 0) {
@@ -434,8 +347,6 @@ export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Sh
         rowObj['Nomor Struk Kasir'] = item.receipt_number || '—';
         rowObj['Kode Produk'] = item.product_code || '—';
         rowObj['Nama Produk'] = item.master_products?.item_description || '(Tidak diketahui)';
-        rowObj['Nomor Batch'] = item.batch_id || '—';
-        rowObj['Tanggal ED'] = item.ed_date || '—';
         rowObj['Jumlah Terjual (Qty)'] = qty;
         rowObj['Harga Satuan (Rp)'] = unitPrice;
         rowObj['Total Penjualan (Rp)'] = totalPrice;
@@ -457,8 +368,6 @@ export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Sh
     totalRow['Nomor Struk Kasir'] = '';
     totalRow['Kode Produk'] = '';
     totalRow['Nama Produk'] = '';
-    totalRow['Nomor Batch'] = '';
-    totalRow['Tanggal ED'] = '';
     totalRow['Jumlah Terjual (Qty)'] = totalQty;
     totalRow['Harga Satuan (Rp)'] = '';
     totalRow['Total Penjualan (Rp)'] = totalOmzet;

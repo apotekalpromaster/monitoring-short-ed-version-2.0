@@ -1,4 +1,4 @@
-﻿/**
+/**
  * OutletMonitoringPage.jsx — Monitoring Produk Short ED
  *
  * Menampilkan riwayat seluruh produk Short ED yang sudah diinput outlet ini,
@@ -23,8 +23,8 @@ import { getEdCategory, formatDate, monthsUntilED, getRekomendasi, CATEGORIES } 
 
 // ── Single Source of Truth: Periode ED yang diizinkan ──
 const MIN_ED_DATE = '2025-09-01';
-const MAX_ED_DATE = '2027-03-31';
-const ED_PERIOD_LABEL = '1 Sep 2025 - 31 Mar 2027';
+const MAX_ED_DATE = '2027-09-30';
+const ED_PERIOD_LABEL = '1 Sep 2025 - 30 Sep 2027';
 
 
 export default function OutletMonitoringPage() {
