@@ -128,7 +128,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
             if (tableSearch.trim()) {
                 const q = tableSearch.trim().toLowerCase();
                 const name = (s.master_products?.item_description || '').toLowerCase();
-                const code = (s.product_code || '').toLowerCase();
+                const code = (s.master_products?.barcode || s.product_code || '').toLowerCase();
                 const receipt = (s.receipt_number || '').toLowerCase();
                 const outletName = (s.outlet_name || '').toLowerCase();
                 const outletCode = (s.outlet_code || '').toLowerCase();
@@ -399,7 +399,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
                                         <td>
                                             <span className={styles.receiptBadge}>{s.receipt_number}</span>
                                         </td>
-                                        <td><code className={styles.codeBadge}>{s.product_code}</code></td>
+                                        <td><code className={styles.codeBadge}>{s.master_products?.barcode || s.product_code}</code></td>
                                         <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
                                             {s.master_products?.item_description || '(Tidak diketahui)'}
                                         </td>

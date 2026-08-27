@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
  * salesService.js
  * Modul layanan transaksi dan data penjualan produk Short ED (Sistem Pencatatan Mandiri).
  * Tidak memotong/mengubah data pada tabel stocks_ed.
+ * Kolom `barcode` pada master_products adalah Kode Produk yang sebenarnya.
  */
 
 /**
@@ -130,7 +131,7 @@ export async function fetchOutletSales(outletCode, { period, startDate, endDate 
     if (salesError) throw salesError;
     if (!salesData || salesData.length === 0) return [];
 
-    // Lookup nama produk dari master_products
+    // Lookup nama produk dari master_products HANYA berdasarkan kolom barcode
     const uniqueProductCodes = [...new Set(salesData.map(s => String(s.product_code || '').trim()))].filter(Boolean);
     let productMap = {};
 
@@ -140,12 +141,11 @@ export async function fetchOutletSales(outletCode, { period, startDate, endDate 
             const chunk = uniqueProductCodes.slice(i, i + chunkSize);
             const { data: pData } = await supabase
                 .from('master_products')
-                .select('product_code, barcode, item_description, uom')
-                .in('product_code', chunk);
+                .select('barcode, item_description, uom')
+                .in('barcode', chunk);
 
             if (pData) {
                 pData.forEach(p => {
-                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }
@@ -206,7 +206,7 @@ export async function fetchAMSales(outletCodes, { period, startDate, endDate } =
         }
     }
 
-    // Lookup Master Products
+    // Lookup Master Products HANYA berdasarkan kolom barcode
     const uniqueProductCodes = [...new Set(allSales.map(s => String(s.product_code || '').trim()))].filter(Boolean);
     let productMap = {};
     if (uniqueProductCodes.length > 0) {
@@ -215,12 +215,11 @@ export async function fetchAMSales(outletCodes, { period, startDate, endDate } =
             const chunk = uniqueProductCodes.slice(i, i + chunkSize);
             const { data: pData } = await supabase
                 .from('master_products')
-                .select('product_code, barcode, item_description, uom')
-                .in('product_code', chunk);
+                .select('barcode, item_description, uom')
+                .in('barcode', chunk);
 
             if (pData) {
                 pData.forEach(p => {
-                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }
@@ -284,7 +283,7 @@ export async function fetchAllSales({ period, startDate, endDate } = {}) {
         }
     }
 
-    // Fetch Products Map
+    // Fetch Products Map HANYA berdasarkan kolom barcode
     const uniqueProductCodes = [...new Set(allSales.map(s => String(s.product_code || '').trim()))].filter(Boolean);
     let productMap = {};
     if (uniqueProductCodes.length > 0) {
@@ -293,12 +292,11 @@ export async function fetchAllSales({ period, startDate, endDate } = {}) {
             const chunk = uniqueProductCodes.slice(i, i + chunkSize);
             const { data: pData } = await supabase
                 .from('master_products')
-                .select('product_code, barcode, item_description, uom')
-                .in('product_code', chunk);
+                .select('barcode, item_description, uom')
+                .in('barcode', chunk);
 
             if (pData) {
                 pData.forEach(p => {
-                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }
@@ -345,7 +343,7 @@ export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Sh
 
         rowObj['Tanggal Transaksi'] = item.transaction_date || '—';
         rowObj['Nomor Struk Kasir'] = item.receipt_number || '—';
-        rowObj['Kode Produk'] = item.product_code || '—';
+        rowObj['Kode Produk'] = item.master_products?.barcode || item.product_code || '—';
         rowObj['Nama Produk'] = item.master_products?.item_description || '(Tidak diketahui)';
         rowObj['Jumlah Terjual (Qty)'] = qty;
         rowObj['Harga Satuan (Rp)'] = unitPrice;

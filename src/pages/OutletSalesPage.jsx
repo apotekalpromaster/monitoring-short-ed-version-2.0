@@ -1,6 +1,6 @@
 /**
  * OutletSalesPage.jsx — Form Pencatatan & Riwayat Penjualan Produk Short ED
- * Desain POS 2-Kolom: Master Products Lookup, No Batch, Edit & Delete Cart Items, Independent Sales Logger.
+ * Desain POS 2-Kolom: Master Products Lookup (Barcode Column as Item Code), No Batch, Edit & Delete Cart Items.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -45,7 +45,7 @@ export default function OutletSalesPage() {
     // ── Current Item Input State ──
     const [productQuery, setProductQuery] = useState('');
     const [barcodeQuery, setBarcodeQuery] = useState('');
-    const [selectedProduct, setSelectedProduct] = useState(null); // { product_code, barcode, item_description, uom }
+    const [selectedProduct, setSelectedProduct] = useState(null); // { barcode, item_description, uom }
     const [productDropdownOpen, setProductDropdownOpen] = useState(false);
     const [productSuggestions, setProductSuggestions] = useState([]);
     const [searchingProduct, setSearchingProduct] = useState(false);
@@ -151,11 +151,11 @@ export default function OutletSalesPage() {
     const handleSelectProduct = (prod) => {
         setSelectedProduct(prod);
         setProductQuery('');
-        setBarcodeQuery(prod.barcode || prod.product_code);
+        setBarcodeQuery(prod.barcode || '');
         setProductDropdownOpen(false);
     };
 
-    // ── 4. Handler Ketik / Scan Barcode (master_products lookup) ──
+    // ── 4. Handler Ketik / Scan Kode Produk (HANYA membaca kolom barcode) ──
     const handleBarcodeChange = async (val) => {
         setBarcodeQuery(val);
         const clean = val.trim();
@@ -170,7 +170,7 @@ export default function OutletSalesPage() {
                 setSelectedProduct(matched);
             }
         } catch (err) {
-            console.error('Error barcode lookup:', err);
+            console.error('Error product code lookup:', err);
         }
     };
 
@@ -205,7 +205,8 @@ export default function OutletSalesPage() {
         const numericQty = parseFloat(qty);
         const numericPrice = parseFloat(unitPrice);
         const subtotal = Math.round(numericQty * numericPrice * 100) / 100;
-        const pCode = selectedProduct.product_code || selectedProduct.barcode;
+        // Kolom barcode adalah Kode Produk sebenarnya
+        const pCode = selectedProduct.barcode || selectedProduct.product_code || barcodeQuery.trim();
         const pName = selectedProduct.item_description || selectedProduct.description || pCode;
         const pUom = selectedProduct.uom || 'Pcs';
 
@@ -256,7 +257,7 @@ export default function OutletSalesPage() {
     const handleEditItem = (item) => {
         setEditingItemId(item.id);
         setSelectedProduct({
-            product_code: item.productCode,
+            barcode: item.productCode,
             item_description: item.productName,
             uom: item.uom
         });
@@ -345,7 +346,7 @@ export default function OutletSalesPage() {
         const q = tableSearch.trim().toLowerCase();
         return sales.filter(s => {
             const name = (s.master_products?.item_description || '').toLowerCase();
-            const code = (s.product_code || '').toLowerCase();
+            const code = (s.master_products?.barcode || s.product_code || '').toLowerCase();
             const receipt = (s.receipt_number || '').toLowerCase();
             return name.includes(q) || code.includes(q) || receipt.includes(q);
         });
@@ -525,16 +526,16 @@ export default function OutletSalesPage() {
 
                             <form onSubmit={handleAddOrUpdateItem}>
                                 <div className={styles.formGridFull}>
-                                    {/* Scan / Ketik Kode Produk / Barcode */}
+                                    {/* Scan / Ketik Kode Produk */}
                                     <div className={styles.formGroup}>
                                         <label className={styles.formLabel}>
                                             <Hash size={13} />
-                                            Kode Produk / Barcode (Scan / Ketik)
+                                            Kode Produk (Scan / Ketik)
                                         </label>
                                         <input
                                             type="text"
                                             className={styles.formInput}
-                                            placeholder="Scan barcode atau ketik kode..."
+                                            placeholder="Scan barcode atau ketik kode produk..."
                                             value={barcodeQuery}
                                             onChange={e => handleBarcodeChange(e.target.value)}
                                         />
@@ -583,14 +584,13 @@ export default function OutletSalesPage() {
                                                     ) : (
                                                         productSuggestions.map(p => (
                                                             <div
-                                                                key={p.product_code}
+                                                                key={p.barcode}
                                                                 onClick={() => handleSelectProduct(p)}
                                                                 className={styles.dropdownItem}
                                                             >
                                                                 <div className={styles.dropdownItemName}>{p.item_description}</div>
                                                                 <div className={styles.dropdownItemMeta}>
-                                                                    <span>Kode: <code>{p.product_code}</code></span>
-                                                                    {p.barcode && <span>· Barcode: <code>{p.barcode}</code></span>}
+                                                                    <span>Kode: <code>{p.barcode}</code></span>
                                                                     <span>· Satuan: {p.uom || 'Pcs'}</span>
                                                                 </div>
                                                             </div>
@@ -607,10 +607,10 @@ export default function OutletSalesPage() {
                                     <div className={styles.selectedProductBanner}>
                                         <div className={styles.selectedProductInfo}>
                                             <div className={styles.selectedProductName}>
-                                                {selectedProduct.item_description || selectedProduct.description || selectedProduct.product_code}
+                                                {selectedProduct.item_description || selectedProduct.description}
                                             </div>
                                             <div className={styles.selectedProductDetails}>
-                                                <span>Kode: <code>{selectedProduct.product_code || selectedProduct.barcode}</code></span>
+                                                <span>Kode Produk: <code>{selectedProduct.barcode || selectedProduct.product_code}</code></span>
                                                 <span>·</span>
                                                 <span>Satuan: <strong>{selectedProduct.uom || 'Pcs'}</strong></span>
                                             </div>
@@ -732,7 +732,7 @@ export default function OutletSalesPage() {
                                         Struk Masih Kosong
                                     </div>
                                     <div style={{ fontSize: '0.78rem' }}>
-                                        Isi tanggal & no. struk, lalu pilih obat dan klik <strong>&ldquo;Tambah ke Struk&rdquo;</strong>.
+                                        Isi tanggal & no. struk, lalu masukkan obat dan klik <strong>&ldquo;Tambah ke Struk&rdquo;</strong>.
                                     </div>
                                 </div>
                             ) : (
@@ -827,7 +827,7 @@ export default function OutletSalesPage() {
                 </div>
             </div>
 
-            {/* ── BAGIAN BAWAH: TABEL RIWAYAT PENJUALAN APOTEK (TANPA BATCH) ── */}
+            {/* ── BAGIAN BAWAH: TABEL RIWAYAT PENJUALAN APOTEK (KODE PRODUK DARI BARCODE) ── */}
             <div className={styles.historySection}>
                 <div className={styles.historyToolbar}>
                     <div>
@@ -935,7 +935,7 @@ export default function OutletSalesPage() {
                                         <td>
                                             <span className={styles.receiptBadge}>{s.receipt_number}</span>
                                         </td>
-                                        <td><code className={styles.codeBadge}>{s.product_code}</code></td>
+                                        <td><code className={styles.codeBadge}>{s.master_products?.barcode || s.product_code}</code></td>
                                         <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
                                             {s.master_products?.item_description || '(Tidak diketahui)'}
                                         </td>
