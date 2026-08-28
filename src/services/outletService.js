@@ -16,6 +16,9 @@
  *    id (PK, uuid auto-gen), outlet_code (FK → master_outlets),
  *    product_code, batch_id, ed_date, qty, remark,
  *    input_period, status_action, created_at
+ *
+ * Catatan: kolom `unique_id` /TIDAK ADA/ di skema Supabase.
+ * PK untuk stocks_ed adalah `id` (UUID, di-generate otomatis oleh Supabase).
  */
 
 import { supabase } from './supabaseClient';
@@ -26,7 +29,8 @@ import { supabase } from './supabaseClient';
 
 /**
  * Cari produk dari master_products.
- * Pencarian berdasarkan item_description ATAU product_code ATAU barcode.
+ * Kolom deskripsi produk di Supabase adalah `item_description` (bukan `description`).
+ * Pencarian berdasarkan deskripsi ATAU product_code.
  */
 export async function searchProducts(query) {
     if (!query || query.trim().length < 2) return [];
@@ -34,7 +38,7 @@ export async function searchProducts(query) {
     const { data, error } = await supabase
         .from('master_products')
         .select('product_code, barcode, item_description, uom')
-        .or(`item_description.ilike.%${query.trim()}%,product_code.ilike.%${query.trim()}%,barcode.ilike.%${query.trim()}%`)
+        .or(`item_description.ilike.%${query.trim()}%,product_code.ilike.%${query.trim()}%`)
         .order('item_description', { ascending: true })
         .limit(30);
 
@@ -43,15 +47,15 @@ export async function searchProducts(query) {
 }
 
 /**
- * Cari produk berdasarkan kode barcode / kode produk.
- * Mencari ke kolom `product_code` terlebih dahulu, jika tidak ketemu baru mencari ke kolom `barcode`.
- * Dipakai oleh scanner fisik, kamera, dan input manual.
+ * Cari produk berdasarkan kode barcode (bukan nama).
+ * Dipakai oleh scanner fisik dan kamera.
+ * Mengembalikan objek produk { product_code, barcode, item_description, uom } atau null.
  */
 export async function searchProductByBarcode(barcodeStr) {
     if (!barcodeStr || !barcodeStr.trim()) return null;
     const value = barcodeStr.trim();
 
-    // 1. Coba cocokkan ke product_code terlebih dahulu (sesuai versi main)
+    // Coba cocokkan ke product_code terlebih dahulu (sesuai data scanner apotek)
     const { data: byCode, error: err1 } = await supabase
         .from('master_products')
         .select('product_code, barcode, item_description, uom')
@@ -61,7 +65,7 @@ export async function searchProductByBarcode(barcodeStr) {
     if (err1) throw err1;
     if (byCode) return byCode;
 
-    // 2. Fallback: coba cocokkan ke kolom barcode
+    // Fallback: coba cocokkan ke kolom barcode
     const { data: byBarcode, error: err2 } = await supabase
         .from('master_products')
         .select('product_code, barcode, item_description, uom')
@@ -94,6 +98,12 @@ export async function isProductExcluded(productCode) {
 
 /**
  * Insert data stok baru ke tabel stocks_ed.
+ *
+ * BERBEDA dengan logika lama (Apps Script):
+ *  - Di sistem baru, PK adalah `id` (UUID auto-gen), bukan unique_id komposit.
+ *  - Penyimpanan selalu INSERT baru (append). Jika Procurement ingin deduplikasi,
+ *    itu dilakukan di layer logika bisnis Procurement, bukan di form Outlet.
+ *  - `input_period` diisi dengan format YYYY-MM (period laporan).
  */
 export async function saveStockEntry({ outletCode, productCode, batchId, edDate, qty, remark }) {
     // Hardcoded Period Validation: 1 Sep 2025 - 30 Sep 2027
@@ -114,6 +124,8 @@ export async function saveStockEntry({ outletCode, productCode, batchId, edDate,
             qty: parseFloat(qty),
             remark: remark || '',
             input_period: inputPeriod,
+            // id          → auto-generated UUID oleh Supabase (gen_random_uuid)
+            // status_action → null by default (diisi oleh Procurement nanti)
         });
 
     if (error) throw error;
@@ -122,6 +134,7 @@ export async function saveStockEntry({ outletCode, productCode, batchId, edDate,
 
 /**
  * Insert data stok massal (dari CSV).
+ * records = array of { productCode, batchId, edDate, qty, remark }
  */
 export async function saveBulkStockEntries(outletCode, records) {
     if (!records || records.length === 0) return { success: true };
@@ -142,13 +155,17 @@ export async function saveBulkStockEntries(outletCode, records) {
             remark: r.remark || '',
             input_period: r.edDate.slice(0, 7)
         };
+        // Jika CSV menyertakan ID (kemungkinan hasil download edit) gunakan untuk replace/upsert
         if (r.id && r.id.trim() !== '') {
             row.id = r.id.trim();
         }
         return row;
     });
 
-    const CHUNK_SIZE = 500;
+    // ==========================================
+    // CHUNKING ALGORITHM UNTUK MENCEGAH TIMEOUT
+    // ==========================================
+    const CHUNK_SIZE = 500; // Maksimal 500 baris per HTTP request
     let totalInserted = 0;
 
     for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
@@ -165,6 +182,8 @@ export async function saveBulkStockEntries(outletCode, records) {
 
         totalInserted += chunk.length;
 
+        // Beri jeda 150ms antar request agar CPU Supabase VM dan PgBouncer punya waktu 'bernapas'
+        // Sangat krusial untuk skenario ratusan Outlet upload CSV bersamaan di hari H penutupan.
         if (i + CHUNK_SIZE < payload.length) {
             await new Promise(resolve => setTimeout(resolve, 150));
         }
@@ -175,14 +194,16 @@ export async function saveBulkStockEntries(outletCode, records) {
 
 /**
  * Update data stok (inline edit).
+ * Hanya mengizinkan edit kolom batch_id, ed_date, qty, dan remark.
  */
 export async function updateStockEntry(id, { batchId, edDate, qty, remark }) {
+    // Hardcoded Period Validation
     if (edDate < '2025-09-01' || edDate > '2027-09-30') {
         throw new Error('Gagal update: Tanggal ED di luar periode yang diizinkan (1 Sep 2025 - 30 Sep 2027).');
     }
 
     const formattedBatch = batchId.trim().toUpperCase();
-    const inputPeriod = edDate.slice(0, 7);
+    const inputPeriod = edDate.slice(0, 7); // update period in case ED date changes month
 
     const { error } = await supabase
         .from('stocks_ed')
@@ -203,7 +224,13 @@ export async function updateStockEntry(id, { batchId, edDate, qty, remark }) {
 // STOCKS ED — READ
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Ambil semua stocks_ed milik outlet yang sedang login,
+ * beserta data relasi manual ke master_products untuk mengambil nama dan harga diskon (Rekomendasi).
+ * Karena skema SQL tidak mengizinkan JOIN langsung (tidak ada FK product_code), kita merge di JS.
+ */
 export async function fetchOutletStocks(outletCode) {
+    // 1. Ambil data dari stocks_ed (dengan paginasi untuk melewati batas 1000 baris)
     let allStocks = [];
     let page = 0;
     const pageSize = 1000;
@@ -229,17 +256,21 @@ export async function fetchOutletStocks(outletCode) {
     if (allStocks.length === 0) return [];
 
     const stocksData = allStocks;
+
+    // 2. Kumpulkan semua product_code unik
     const uniqueProductCodes = [...new Set(stocksData.map(s => String(s.product_code || '').trim()))].filter(Boolean);
 
     if (uniqueProductCodes.length === 0) return stocksData;
 
+    // 3. Ambil data dari master_products (Chunked & Aman dari Karakter Spesial)
     let productMap = {};
     if (uniqueProductCodes.length > 0) {
         const chunkSize = 100;
         for (let i = 0; i < uniqueProductCodes.length; i += chunkSize) {
             const chunk = uniqueProductCodes.slice(i, i + chunkSize);
 
-            // Lookup ke kolom barcode
+            // Supabase client lebih aman memakai .in() dengan array langsung dibanding .or(string)
+            // Sesuai instruksi User: HANYA HANYA Lookup ke Barcode!
             const { data: bCodeData } = await supabase
                 .from('master_products')
                 .select('*')
@@ -247,26 +278,14 @@ export async function fetchOutletStocks(outletCode) {
 
             if (bCodeData) {
                 bCodeData.forEach(p => {
-                    if (p.barcode) productMap[String(p.barcode).trim()] = p;
-                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
-                });
-            }
-
-            // Fallback lookup ke kolom product_code
-            const { data: pCodeData } = await supabase
-                .from('master_products')
-                .select('*')
-                .in('product_code', chunk);
-
-            if (pCodeData) {
-                pCodeData.forEach(p => {
-                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
+                    // productMap mengandalkan barcode sebagai kunci pencocokan utama
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }
         }
     }
 
+    // 5. Gabungkan data
     return stocksData.map(stock => {
         const pCodeSearch = String(stock.product_code || '').trim();
         return {
