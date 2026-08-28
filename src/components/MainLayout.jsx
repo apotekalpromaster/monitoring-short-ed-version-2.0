@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
     ScanLine, ClipboardPen, Activity,
     LayoutDashboard, PackageSearch, Receipt,
-    LogOut, Menu, X, ChevronDown
+    LogOut, Menu, ChevronDown
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import styles from './MainLayout.module.css';
@@ -62,7 +62,7 @@ function getInitials(name = '') {
 export default function MainLayout() {
     const navigate = useNavigate();
     const { user, logout } = useAuthStore();
-    
+
     // Sidebar toggle states
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
     const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -99,7 +99,7 @@ export default function MainLayout() {
                 <img
                     src="/alpro-logo.png"
                     alt="Apotek Alpro"
-                    style={{ maxHeight: '38px', width: 'auto', objectFit: 'contain', display: 'block' }}
+                    style={{ maxHeight: '36px', width: 'auto', objectFit: 'contain', display: 'block' }}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <div className={styles.brandName}>Apotek Alpro</div>
@@ -171,7 +171,7 @@ export default function MainLayout() {
                 })}
             </nav>
 
-            {/* User Profile + Logout */}
+            {/* User Profile + Logout (Hanya ada di Side Panel) */}
             <div className={styles.userProfile}>
                 <div className={styles.avatar}>{getInitials(user?.name)}</div>
                 <div className={styles.userInfo}>
@@ -192,7 +192,7 @@ export default function MainLayout() {
 
     return (
         <div className={styles.shell}>
-            {/* ── Sidebar (Desktop: Collapsible Sticky | Mobile: Drawer) ── */}
+            {/* ── Sidebar (Fixed Static Navigation, tidak ikut scroll) ── */}
             <aside
                 className={`
                     ${styles.sidebar}
@@ -211,8 +211,13 @@ export default function MainLayout() {
             />
 
             {/* ── Main Area ── */}
-            <div className={styles.main}>
-                {/* ── Unified Responsive Topbar ── */}
+            <div
+                className={`
+                    ${styles.main}
+                    ${!desktopSidebarOpen ? styles.mainExpanded : ''}
+                `}
+            >
+                {/* ── Topbar (Hanya Menu Toggle & Logo) ── */}
                 <header className={styles.topbar}>
                     <div className={styles.topbarLeft}>
                         <button
@@ -231,24 +236,6 @@ export default function MainLayout() {
                             />
                             <span className={styles.topbarAppTitle}>Monitoring Short ED</span>
                         </div>
-                    </div>
-
-                    <div className={styles.topbarRight}>
-                        <span className={styles.topbarRoleBadge}>
-                            {ROLE_LABEL[user?.role] || user?.role}
-                        </span>
-                        <div className={styles.topbarUser}>
-                            <div className={styles.topbarAvatar}>{getInitials(user?.name)}</div>
-                            <span className={styles.topbarUserName}>{user?.name}</span>
-                        </div>
-                        <button
-                            className={styles.topbarLogoutBtn}
-                            onClick={handleLogout}
-                            title="Keluar"
-                            aria-label="Logout"
-                        >
-                            <LogOut size={15} strokeWidth={2.2} />
-                        </button>
                     </div>
                 </header>
 

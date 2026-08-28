@@ -2,32 +2,110 @@
 
 /* ── Shell Structure ── */
 .shell {
-    display: flex;
     min-height: 100dvh;
     background: var(--bg);
     position: relative;
-    overflow-x: hidden;
+    width: 100%;
 }
 
-/* ── Sidebar ── */
+/* ── Sidebar (Statis & Fixed, tidak ikut bergeser saat web di-scroll) ── */
 .sidebar {
     width: 256px;
-    flex-shrink: 0;
+    height: 100vh;
+    height: 100dvh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
     display: flex;
     flex-direction: column;
     background: var(--surface);
     border-right: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    height: 100dvh;
     overflow-y: auto;
     z-index: 40;
-    transition: margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1), transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateX(0);
 }
 
 /* Desktop Collapsed Sidebar */
 .sidebar.collapsed {
-    margin-left: -256px;
+    transform: translateX(-256px);
+}
+
+/* ── Main Content Area ── */
+.main {
+    margin-left: 256px;
+    width: calc(100% - 256px);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    transition: margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1), width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.main.mainExpanded {
+    margin-left: 0;
+    width: 100%;
+}
+
+/* ── Topbar Header (Bersih tanpa duplikasi user) ── */
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-xs);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
+.topbarLeft {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.hamburger {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-sub);
+    transition: all var(--duration) var(--ease-out);
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    cursor: pointer;
+}
+
+.hamburger:hover {
+    background: rgba(249, 115, 22, 0.08);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.topbarBrand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.topbarLogo {
+    max-height: 28px;
+    width: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.topbarAppTitle {
+    font-size: 0.925rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.2px;
 }
 
 /* ── Sidebar: Branding ── */
@@ -37,6 +115,7 @@
     gap: 12px;
     padding: 18px 20px;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 .brandName {
@@ -146,7 +225,6 @@
         opacity: 0;
         transform: scaleY(0.95);
     }
-
     to {
         opacity: 1;
         transform: scaleY(1);
@@ -201,7 +279,7 @@
     left: -13px;
 }
 
-/* ── Sidebar: User Profile ── */
+/* ── Sidebar: User Profile (Hanya di Sidebar) ── */
 .userProfile {
     padding: 14px 16px;
     border-top: 1px solid var(--border);
@@ -209,6 +287,7 @@
     align-items: center;
     gap: 10px;
     background: var(--surface);
+    flex-shrink: 0;
 }
 
 .avatar {
@@ -248,159 +327,21 @@
 }
 
 .logoutBtn {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--text-muted);
     flex-shrink: 0;
-    border: none;
-    background: none;
-    transition:
-        background-color var(--duration) var(--ease-out),
-        color var(--duration) var(--ease-out);
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    transition: all var(--duration) var(--ease-out);
     cursor: pointer;
 }
 
 .logoutBtn:hover {
-    background: var(--danger-light);
-    color: var(--danger);
-}
-
-/* ── Main Content Area ── */
-.main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    transition: all 0.28s var(--ease-out);
-}
-
-/* ── Unified Topbar Header ── */
-.topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 20px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    box-shadow: var(--shadow-xs);
-    position: sticky;
-    top: 0;
-    z-index: 30;
-}
-
-.topbarLeft {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-
-.hamburger {
-    width: 38px;
-    height: 38px;
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-sub);
-    transition: all var(--duration) var(--ease-out);
-    border: 1px solid var(--border);
-    background: var(--surface-raised);
-    cursor: pointer;
-}
-
-.hamburger:hover {
-    background: rgba(249, 115, 22, 0.08);
-    color: var(--primary);
-    border-color: var(--primary);
-}
-
-.topbarBrand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.topbarLogo {
-    max-height: 30px;
-    width: auto;
-    object-fit: contain;
-    display: block;
-}
-
-.topbarAppTitle {
-    font-size: 0.925rem;
-    font-weight: 700;
-    color: var(--text-main);
-    letter-spacing: -0.2px;
-}
-
-.topbarRight {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.topbarRoleBadge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    background: var(--primary-light);
-    color: var(--primary);
-    border-radius: 20px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.topbarUser {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.topbarAvatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--primary), #ea580c);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: white;
-}
-
-.topbarUserName {
-    font-size: 0.825rem;
-    font-weight: 600;
-    color: var(--text-main);
-    max-width: 140px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.topbarLogoutBtn {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    background: var(--surface-raised);
-    cursor: pointer;
-    transition: all var(--duration);
-}
-
-.topbarLogoutBtn:hover {
     background: var(--danger-light);
     color: var(--danger);
     border-color: var(--danger);
@@ -418,7 +359,7 @@
     position: fixed;
     inset: 0;
     background: rgba(15, 23, 42, 0.45);
-    z-index: 38;
+    z-index: 45;
     backdrop-filter: blur(3px);
     -webkit-backdrop-filter: blur(3px);
     animation: fadeIn 0.2s ease both;
@@ -428,7 +369,6 @@
     from {
         opacity: 0;
     }
-
     to {
         opacity: 1;
     }
@@ -437,18 +377,18 @@
 /* ── Responsive Mobile (max-width: 768px) ── */
 @media (max-width: 768px) {
     .sidebar {
-        position: fixed;
-        inset-block: 0;
-        left: 0;
-        height: 100dvh;
         transform: translateX(-100%);
-        margin-left: 0 !important;
         box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
         z-index: 50;
     }
 
     .sidebar.open {
         transform: translateX(0);
+    }
+
+    .main {
+        margin-left: 0 !important;
+        width: 100% !important;
     }
 
     .overlay.visible {
@@ -459,8 +399,7 @@
         padding: 10px 14px;
     }
 
-    .topbarAppTitle,
-    .topbarUserName {
+    .topbarAppTitle {
         display: none;
     }
 
