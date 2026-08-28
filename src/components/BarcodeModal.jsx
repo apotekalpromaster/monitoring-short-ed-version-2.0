@@ -78,7 +78,7 @@ export default function BarcodeModal({ isOpen, onScan, onClose }) {
 
                 await scanner.start(
                     rearCam.id,
-                    { fps: 12, qrbox: { width: 200, height: 120 } },
+                    { fps: 15, qrbox: { width: 250, height: 150 } },
                     (decodedText) => {
                         // Barcode berhasil dibaca!
                         playBeep();

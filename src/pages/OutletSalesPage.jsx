@@ -1,6 +1,6 @@
 /**
  * OutletSalesPage.jsx — Form Pencatatan & Riwayat Penjualan Produk Short ED
- * Desain POS 2-Kolom: Master Products Lookup, No Batch, Edit & Delete Cart Items, Camera Barcode Scanner.
+ * Desain POS 2-Kolom: Master Products Lookup (Barcode Column as Item Code), No Batch, Edit & Delete Cart Items, Camera Barcode Scanner.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -49,7 +49,7 @@ export default function OutletSalesPage() {
     // ── Current Item Input State ──
     const [productQuery, setProductQuery] = useState('');
     const [barcodeQuery, setBarcodeQuery] = useState('');
-    const [selectedProduct, setSelectedProduct] = useState(null); // { product_code, barcode, item_description, uom }
+    const [selectedProduct, setSelectedProduct] = useState(null); // { barcode, product_code, item_description, uom }
     const [productDropdownOpen, setProductDropdownOpen] = useState(false);
     const [productSuggestions, setProductSuggestions] = useState([]);
     const [searchingProduct, setSearchingProduct] = useState(false);
@@ -155,6 +155,7 @@ export default function OutletSalesPage() {
     const handleSelectProduct = (prod) => {
         setSelectedProduct(prod);
         setProductQuery('');
+        // Selalu tampilkan nilai dari kolom barcode
         setBarcodeQuery(prod.barcode || prod.product_code || '');
         setProductDropdownOpen(false);
     };
@@ -172,6 +173,10 @@ export default function OutletSalesPage() {
             const matched = await searchProductByBarcode(clean);
             if (matched) {
                 setSelectedProduct(matched);
+                // Jika ditemukan via product_code / barcode, tampilkan data dari kolom barcode
+                if (matched.barcode && matched.barcode !== clean) {
+                    setBarcodeQuery(matched.barcode);
+                }
             }
         } catch (err) {
             console.error('Error product code lookup:', err);
@@ -184,17 +189,18 @@ export default function OutletSalesPage() {
         if (!scannedCode || !scannedCode.trim()) return;
 
         const clean = scannedCode.trim();
-        setBarcodeQuery(clean);
         setToast({ message: 'Mencari produk...', type: 'info' });
 
         try {
             const matched = await searchProductByBarcode(clean);
             if (matched) {
                 setSelectedProduct(matched);
+                // Data yang dimunculkan harus tetap dari kolom barcode
                 setBarcodeQuery(matched.barcode || matched.product_code || clean);
                 setProductQuery('');
                 setToast({ message: `Produk ditemukan: ${matched.item_description}`, type: 'success' });
             } else {
+                setBarcodeQuery(clean);
                 setToast({ message: `Kode / Barcode "${clean}" tidak terdaftar di Master Produk.`, type: 'error' });
             }
         } catch (err) {
@@ -233,7 +239,8 @@ export default function OutletSalesPage() {
         const numericQty = parseFloat(qty);
         const numericPrice = parseFloat(unitPrice);
         const subtotal = Math.round(numericQty * numericPrice * 100) / 100;
-        const pCode = selectedProduct.product_code || selectedProduct.barcode || barcodeQuery.trim();
+        // Data yang ditaruh dan disimpan adalah dari kolom barcode Supabase
+        const pCode = selectedProduct.barcode || selectedProduct.product_code || barcodeQuery.trim();
         const pName = selectedProduct.item_description || selectedProduct.description || pCode;
         const pUom = selectedProduct.uom || 'Pcs';
 
@@ -284,8 +291,8 @@ export default function OutletSalesPage() {
     const handleEditItem = (item) => {
         setEditingItemId(item.id);
         setSelectedProduct({
-            product_code: item.productCode,
             barcode: item.productCode,
+            product_code: item.productCode,
             item_description: item.productName,
             uom: item.uom
         });
@@ -374,7 +381,7 @@ export default function OutletSalesPage() {
         const q = tableSearch.trim().toLowerCase();
         return sales.filter(s => {
             const name = (s.master_products?.item_description || '').toLowerCase();
-            const code = (s.product_code || s.master_products?.barcode || '').toLowerCase();
+            const code = (s.master_products?.barcode || s.product_code || '').toLowerCase();
             const receipt = (s.receipt_number || '').toLowerCase();
             return name.includes(q) || code.includes(q) || receipt.includes(q);
         });
@@ -638,16 +645,13 @@ export default function OutletSalesPage() {
                                                     ) : (
                                                         productSuggestions.map(p => (
                                                             <div
-                                                                key={p.product_code || p.barcode}
+                                                                key={p.barcode || p.product_code}
                                                                 onClick={() => handleSelectProduct(p)}
                                                                 className={styles.dropdownItem}
                                                             >
                                                                 <div className={styles.dropdownItemName}>{p.item_description}</div>
                                                                 <div className={styles.dropdownItemMeta}>
-                                                                    <span>Kode: <code>{p.product_code || p.barcode}</code></span>
-                                                                    {p.barcode && p.barcode !== p.product_code && (
-                                                                        <span>· Barcode: <code>{p.barcode}</code></span>
-                                                                    )}
+                                                                    <span>Kode: <code>{p.barcode || p.product_code}</code></span>
                                                                     <span>· Satuan: {p.uom || 'Pcs'}</span>
                                                                 </div>
                                                             </div>
@@ -667,7 +671,7 @@ export default function OutletSalesPage() {
                                                 {selectedProduct.item_description || selectedProduct.description}
                                             </div>
                                             <div className={styles.selectedProductDetails}>
-                                                <span>Kode Produk: <code>{selectedProduct.product_code || selectedProduct.barcode}</code></span>
+                                                <span>Kode Produk: <code>{selectedProduct.barcode || selectedProduct.product_code}</code></span>
                                                 <span>·</span>
                                                 <span>Satuan: <strong>{selectedProduct.uom || 'Pcs'}</strong></span>
                                             </div>
@@ -992,7 +996,7 @@ export default function OutletSalesPage() {
                                         <td>
                                             <span className={styles.receiptBadge}>{s.receipt_number}</span>
                                         </td>
-                                        <td><code className={styles.codeBadge}>{s.product_code || s.master_products?.barcode}</code></td>
+                                        <td><code className={styles.codeBadge}>{s.master_products?.barcode || s.product_code}</code></td>
                                         <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
                                             {s.master_products?.item_description || '(Tidak diketahui)'}
                                         </td>

@@ -2,22 +2,30 @@
 
 .overlay {
     position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(4px);
-    z-index: 300;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    width: 100dvw;
+    height: 100vh;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 9999;
     display: flex;
     align-items: center;
     justify-content: center;
-    animation: overlayIn 0.2s ease both;
     padding: 16px;
+    box-sizing: border-box;
+    animation: overlayIn 0.2s ease both;
 }
 
 @keyframes overlayIn {
     from {
         opacity: 0;
     }
-
     to {
         opacity: 1;
     }
@@ -26,35 +34,40 @@
 .modal {
     background: var(--surface);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
     width: 100%;
     max-width: 440px;
     overflow: hidden;
-    animation: modalIn 0.28s var(--ease-out) both;
+    display: flex;
+    flex-direction: column;
+    margin: auto;
+    max-height: 90dvh;
+    border: 1px solid var(--border);
+    animation: modalIn 0.25s var(--ease-out) both;
 }
 
 @keyframes modalIn {
     from {
         opacity: 0;
-        transform: scale(0.95) translateY(10px);
+        transform: scale(0.95);
     }
-
     to {
         opacity: 1;
-        transform: scale(1) translateY(0);
+        transform: scale(1);
     }
 }
 
 .modalHeader {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
+    padding: 14px 18px;
+    border-bottom: 1.5px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    background: var(--surface);
 }
 
 .modalTitle {
-    font-size: 0.975rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: var(--text-main);
     display: flex;
@@ -67,11 +80,12 @@
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 4px;
+    padding: 6px;
     border-radius: 6px;
     display: flex;
     align-items: center;
-    transition: color var(--duration), background-color var(--duration);
+    justify-content: center;
+    transition: all var(--duration);
 }
 
 .closeBtn:hover {
@@ -82,22 +96,31 @@
 /* ── Viewfinder ── */
 .viewfinderWrap {
     position: relative;
-    background: #000;
+    background: #090d16;
+    width: 100%;
     aspect-ratio: 4 / 3;
+    min-height: 260px;
+    max-height: 360px;
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* html5-qrcode injects its own element; override sizing */
-.viewfinderWrap>div {
+.viewfinderWrap > div {
     width: 100% !important;
     height: 100% !important;
     border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
 .viewfinderWrap video {
     width: 100% !important;
     height: 100% !important;
-    object-fit: cover;
+    object-fit: cover !important;
 }
 
 /* Scanning aiming overlay */
@@ -111,24 +134,23 @@
 }
 
 .aimBox {
-    width: 200px;
-    height: 120px;
+    width: 250px;
+    height: 140px;
+    max-width: 80%;
     border: 2.5px solid var(--primary);
-    border-radius: 10px;
-    box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.45);
     position: relative;
     animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
-
     0%,
     100% {
         border-color: var(--primary);
     }
-
     50% {
-        border-color: rgba(37, 99, 235, 0.4);
+        border-color: rgba(249, 115, 22, 0.4);
     }
 }
 
@@ -137,8 +159,8 @@
 .aimBox::after {
     content: '';
     position: absolute;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     border-color: white;
     border-style: solid;
 }
@@ -147,14 +169,14 @@
     top: -2px;
     left: -2px;
     border-width: 3px 0 0 3px;
-    border-radius: 4px 0 0 0;
+    border-radius: 6px 0 0 0;
 }
 
 .aimBox::after {
     bottom: -2px;
     right: -2px;
     border-width: 0 3px 3px 0;
-    border-radius: 0 0 4px 0;
+    border-radius: 0 0 6px 0;
 }
 
 .scanLine {
@@ -170,7 +192,6 @@
     from {
         top: 0;
     }
-
     to {
         top: calc(100% - 2px);
     }
@@ -178,10 +199,10 @@
 
 /* ── Status Bar ── */
 .statusBar {
-    padding: 14px 20px;
-    background: var(--bg);
-    border-top: 1px solid var(--border);
-    font-size: 0.8rem;
+    padding: 12px 18px;
+    background: var(--surface-raised);
+    border-top: 1.5px solid var(--border);
+    font-size: 0.82rem;
     color: var(--text-muted);
     text-align: center;
     display: flex;
@@ -193,18 +214,19 @@
 
 .statusReady {
     color: var(--primary);
+    font-weight: 600;
 }
 
 .statusSuccess {
     color: var(--success);
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .statusError {
     color: var(--danger);
+    font-weight: 600;
 }
 
-/* ── Spinner ── */
 .spin {
     animation: spin 0.8s linear infinite;
 }
@@ -212,5 +234,27 @@
 @keyframes spin {
     to {
         transform: rotate(360deg);
+    }
+}
+
+/* Responsive Mobile Optimization */
+@media (max-width: 480px) {
+    .overlay {
+        padding: 12px;
+    }
+
+    .modal {
+        max-width: 100%;
+        border-radius: var(--radius-md);
+    }
+
+    .viewfinderWrap {
+        min-height: 260px;
+        aspect-ratio: 1 / 1;
+    }
+
+    .aimBox {
+        width: 220px;
+        height: 130px;
     }
 }
