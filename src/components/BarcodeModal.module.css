@@ -10,16 +10,17 @@
     width: 100dvw;
     height: 100vh;
     height: 100dvh;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.82);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
-    z-index: 9999;
+    z-index: 999999;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 16px;
     box-sizing: border-box;
     animation: overlayIn 0.2s ease both;
+    touch-action: none;
 }
 
 @keyframes overlayIn {
@@ -44,6 +45,8 @@
     max-height: 90dvh;
     border: 1px solid var(--border);
     animation: modalIn 0.25s var(--ease-out) both;
+    position: relative;
+    z-index: 1000000;
 }
 
 @keyframes modalIn {

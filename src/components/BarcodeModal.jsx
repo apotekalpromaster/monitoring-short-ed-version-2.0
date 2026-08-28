@@ -1,11 +1,9 @@
 /**
  * BarcodeModal.jsx — Camera Barcode Scanner Modal
  *
- * Menggunakan html5-qrcode untuk akses kamera.
- * Lifecycle:
- *   - Saat modal muncul → kamera dimulai
- *   - Saat barcode terbaca → callback onScan(barcodeValue) dipanggil, kamera dimatikan
- *   - Saat ditutup (X) → kamera dimatikan, modal hilang
+ * Menggunakan html5-qrcode untuk akses kamera dan ReactDOM.createPortal
+ * agar posisi modal selalu FIXED di tengah layar (viewport) dan tidak ikut
+ * tergeser/ter-scroll saat halaman di-scroll.
  *
  * Props:
  *   - isOpen    : boolean — apakah modal ditampilkan
@@ -14,6 +12,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Html5Qrcode } from 'html5-qrcode';
 import { X, Camera, Loader2 } from 'lucide-react';
 import styles from './BarcodeModal.module.css';
@@ -44,6 +43,17 @@ export default function BarcodeModal({ isOpen, onScan, onClose }) {
     const scannerRef = useRef(null); // instance Html5Qrcode
     const [status, setStatus] = useState('idle'); // 'idle' | 'starting' | 'ready' | 'success' | 'error'
     const [errorMsg, setErrorMsg] = useState('');
+
+    // Kunci scroll halaman belakang saat modal kamera aktif
+    useEffect(() => {
+        if (isOpen) {
+            const originalOverflow = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            return () => {
+                document.body.style.overflow = originalOverflow;
+            };
+        }
+    }, [isOpen]);
 
     // ── Start kamera saat modal dibuka ──
     useEffect(() => {
@@ -131,8 +141,11 @@ export default function BarcodeModal({ isOpen, onScan, onClose }) {
 
     if (!isOpen) return null;
 
-    return (
-        <div className={styles.overlay} onMouseDown={e => { if (e.target === e.currentTarget) handleClose(); }}>
+    const modalContent = (
+        <div
+            className={styles.overlay}
+            onMouseDown={e => { if (e.target === e.currentTarget) handleClose(); }}
+        >
             <div className={styles.modal}>
                 {/* Header */}
                 <div className={styles.modalHeader}>
@@ -188,4 +201,6 @@ export default function BarcodeModal({ isOpen, onScan, onClose }) {
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 }
