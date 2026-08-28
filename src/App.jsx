@@ -20,6 +20,9 @@ import OutletSalesPage from './pages/OutletSalesPage';
 // Multi-outlet Sales Monitoring (AM & BOD)
 import SalesMonitoringPage from './pages/SalesMonitoringPage';
 
+// User Manual Page (All Roles)
+import UserManualPage from './pages/UserManualPage';
+
 function AppRoutes() {
   const user = useAuthStore((s) => s.user);
 
@@ -36,6 +39,17 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={rootRedirect()} />
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+
+      {/* ── ALL ROLES: User Manual ── */}
+      <Route
+        element={
+          <ProtectedRoute allowedRoles={['OUTLET', 'AM', 'PROCUREMENT', 'BOD']}>
+            <MainLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/manual" element={<UserManualPage />} />
+      </Route>
 
       {/* ── OUTLET routes ── */}
       <Route

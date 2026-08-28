@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
     ScanLine, ClipboardPen, Activity,
     LayoutDashboard, PackageSearch, Receipt,
-    LogOut, Menu, ChevronDown
+    LogOut, Menu, ChevronDown, BookOpen
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import styles from './MainLayout.module.css';
@@ -17,6 +17,7 @@ const NAV_CONFIG = {
         { to: '/outlet/input', icon: ClipboardPen, label: 'Input Data Manual' },
         { to: '/outlet/monitoring', icon: Activity, label: 'Monitoring Produk ED' },
         { to: '/outlet/sales', icon: Receipt, label: 'Penjualan Short ED' },
+        { to: '/manual', icon: BookOpen, label: 'Panduan Pengguna' },
     ],
     PROCUREMENT: [
         {
@@ -28,6 +29,7 @@ const NAV_CONFIG = {
                 { to: '/procurement/sales', label: 'Rekap Penjualan' }
             ]
         },
+        { to: '/manual', icon: BookOpen, label: 'Panduan Pengguna' },
     ],
     BOD: [
         {
@@ -41,10 +43,12 @@ const NAV_CONFIG = {
         },
         { to: '/bod', icon: LayoutDashboard, label: 'Dashboard BOD' },
         { to: '/bod/sales', icon: Receipt, label: 'Rekap Penjualan Nasional' },
+        { to: '/manual', icon: BookOpen, label: 'Panduan Pengguna' },
     ],
     AM: [
         { to: '/am', icon: LayoutDashboard, label: 'Dashboard Area Manager' },
         { to: '/am/sales', icon: Receipt, label: 'Penjualan Short ED Area' },
+        { to: '/manual', icon: BookOpen, label: 'Panduan Pengguna' },
     ],
 };
 
