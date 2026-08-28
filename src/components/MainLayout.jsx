@@ -62,12 +62,25 @@ function getInitials(name = '') {
 export default function MainLayout() {
     const navigate = useNavigate();
     const { user, logout } = useAuthStore();
-    const [drawerOpen, setDrawerOpen] = useState(false);
+    
+    // Sidebar toggle states
+    const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+    const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
     const [openSubMenus, setOpenSubMenus] = useState({});
 
     const navItems = NAV_CONFIG[user?.role] || [];
 
-    function closeSidebar() { setDrawerOpen(false); }
+    function toggleSidebar() {
+        if (window.innerWidth <= 768) {
+            setMobileDrawerOpen(prev => !prev);
+        } else {
+            setDesktopSidebarOpen(prev => !prev);
+        }
+    }
+
+    function closeSidebar() {
+        setMobileDrawerOpen(false);
+    }
 
     function handleLogout() {
         logout();
@@ -75,9 +88,9 @@ export default function MainLayout() {
     }
 
     useEffect(() => {
-        document.body.style.overflow = drawerOpen ? 'hidden' : '';
+        document.body.style.overflow = mobileDrawerOpen ? 'hidden' : '';
         return () => { document.body.style.overflow = ''; };
-    }, [drawerOpen]);
+    }, [mobileDrawerOpen]);
 
     const SidebarContent = (
         <>
@@ -86,18 +99,17 @@ export default function MainLayout() {
                 <img
                     src="/alpro-logo.png"
                     alt="Apotek Alpro"
-                    style={{ maxHeight: '40px', width: 'auto', objectFit: 'contain', display: 'block' }}
+                    style={{ maxHeight: '38px', width: 'auto', objectFit: 'contain', display: 'block' }}
                 />
-                {/* Fallback if logo fails to load */}
-                <div style={{ display: 'none', flexDirection: 'column' }}>
-                    <div className={styles.brandName}>Alpro Short ED</div>
-                    <div className={styles.brandTagline}>Monitoring v2.0</div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div className={styles.brandName}>Apotek Alpro</div>
+                    <div className={styles.brandTagline}>Short ED v2.0</div>
                 </div>
             </div>
 
             {/* Navigation */}
             <nav className={styles.nav} role="navigation">
-                <span className={styles.navLabel}>Menu</span>
+                <span className={styles.navLabel}>Menu Navigasi</span>
                 {navItems.map((item) => {
                     const { to, icon: Icon, label, subItems } = item;
 
@@ -111,7 +123,15 @@ export default function MainLayout() {
                                 >
                                     <Icon className={styles.navIcon} size={16} strokeWidth={2} />
                                     {label}
-                                    <ChevronDown size={14} className={styles.navChevron} style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+                                    <ChevronDown
+                                        size={14}
+                                        className={styles.navChevron}
+                                        style={{
+                                            marginLeft: 'auto',
+                                            transition: 'transform 0.2s',
+                                            transform: isOpen ? 'rotate(180deg)' : 'none'
+                                        }}
+                                    />
                                 </button>
                                 {isOpen && (
                                     <div className={styles.navSubMenu}>
@@ -172,34 +192,64 @@ export default function MainLayout() {
 
     return (
         <div className={styles.shell}>
-            {/* ── Sidebar (Desktop: sticky | Mobile: Drawer) ── */}
-            <aside className={`${styles.sidebar}${drawerOpen ? ` ${styles.open}` : ''}`}>
+            {/* ── Sidebar (Desktop: Collapsible Sticky | Mobile: Drawer) ── */}
+            <aside
+                className={`
+                    ${styles.sidebar}
+                    ${!desktopSidebarOpen ? styles.collapsed : ''}
+                    ${mobileDrawerOpen ? styles.open : ''}
+                `}
+            >
                 {SidebarContent}
             </aside>
 
             {/* ── Overlay backdrop (Mobile only) ── */}
             <div
-                className={`${styles.overlay}${drawerOpen ? ` ${styles.visible}` : ''}`}
+                className={`${styles.overlay}${mobileDrawerOpen ? ` ${styles.visible}` : ''}`}
                 onClick={closeSidebar}
                 aria-hidden="true"
             />
 
             {/* ── Main Area ── */}
             <div className={styles.main}>
-                {/* Mobile sticky header with hamburger */}
-                <header className={styles.mobileHeader}>
-                    <button
-                        className={styles.hamburger}
-                        onClick={() => setDrawerOpen((v) => !v)}
-                        aria-label={drawerOpen ? 'Tutup menu' : 'Buka menu'}
-                    >
-                        {drawerOpen ? <X size={20} /> : <Menu size={20} />}
-                    </button>
-                    <img
-                        src="/alpro-logo.png"
-                        alt="Apotek Alpro"
-                        style={{ maxHeight: '32px', width: 'auto', objectFit: 'contain', display: 'block' }}
-                    />
+                {/* ── Unified Responsive Topbar ── */}
+                <header className={styles.topbar}>
+                    <div className={styles.topbarLeft}>
+                        <button
+                            className={styles.hamburger}
+                            onClick={toggleSidebar}
+                            title="Buka / Tutup Side Panel"
+                            aria-label="Toggle side panel"
+                        >
+                            <Menu size={20} />
+                        </button>
+                        <div className={styles.topbarBrand}>
+                            <img
+                                src="/alpro-logo.png"
+                                alt="Apotek Alpro"
+                                className={styles.topbarLogo}
+                            />
+                            <span className={styles.topbarAppTitle}>Monitoring Short ED</span>
+                        </div>
+                    </div>
+
+                    <div className={styles.topbarRight}>
+                        <span className={styles.topbarRoleBadge}>
+                            {ROLE_LABEL[user?.role] || user?.role}
+                        </span>
+                        <div className={styles.topbarUser}>
+                            <div className={styles.topbarAvatar}>{getInitials(user?.name)}</div>
+                            <span className={styles.topbarUserName}>{user?.name}</span>
+                        </div>
+                        <button
+                            className={styles.topbarLogoutBtn}
+                            onClick={handleLogout}
+                            title="Keluar"
+                            aria-label="Logout"
+                        >
+                            <LogOut size={15} strokeWidth={2.2} />
+                        </button>
+                    </div>
                 </header>
 
                 <main className={styles.content}>

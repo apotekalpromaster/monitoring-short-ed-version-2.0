@@ -5,6 +5,8 @@
     display: flex;
     min-height: 100dvh;
     background: var(--bg);
+    position: relative;
+    overflow-x: hidden;
 }
 
 /* ── Sidebar ── */
@@ -15,34 +17,26 @@
     flex-direction: column;
     background: var(--surface);
     border-right: 1px solid var(--border);
-    /* Stays fixed during scroll */
     position: sticky;
     top: 0;
     height: 100dvh;
     overflow-y: auto;
     z-index: 40;
-    transition: transform 0.3s var(--ease-out);
+    transition: margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1), transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Desktop Collapsed Sidebar */
+.sidebar.collapsed {
+    margin-left: -256px;
 }
 
 /* ── Sidebar: Branding ── */
 .brand {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 22px 20px 18px;
+    gap: 12px;
+    padding: 18px 20px;
     border-bottom: 1px solid var(--border);
-}
-
-.brandIcon {
-    width: 36px;
-    height: 36px;
-    background: linear-gradient(135deg, var(--primary), #7c3aed);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
 }
 
 .brandName {
@@ -50,13 +44,14 @@
     font-weight: 700;
     color: var(--text-main);
     letter-spacing: -0.3px;
+    line-height: 1.2;
 }
 
 .brandTagline {
     font-size: 0.7rem;
     font-weight: 500;
     color: var(--text-muted);
-    margin-top: 1px;
+    margin-top: 2px;
 }
 
 /* ── Sidebar: Nav ── */
@@ -213,13 +208,14 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    background: var(--surface);
 }
 
 .avatar {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    background: linear-gradient(135deg, var(--primary), #ea580c);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -265,6 +261,7 @@
     transition:
         background-color var(--duration) var(--ease-out),
         color var(--duration) var(--ease-out);
+    cursor: pointer;
 }
 
 .logoutBtn:hover {
@@ -278,15 +275,15 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    /* prevent flex overflow */
+    transition: all 0.28s var(--ease-out);
 }
 
-/* ── Mobile Header ── */
-.mobileHeader {
-    display: none;
+/* ── Unified Topbar Header ── */
+.topbar {
+    display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 18px;
+    justify-content: space-between;
+    padding: 10px 20px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     box-shadow: var(--shadow-xs);
@@ -295,34 +292,124 @@
     z-index: 30;
 }
 
+.topbarLeft {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
 .hamburger {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--text-sub);
-    transition: background-color var(--duration) var(--ease-out);
-    border: none;
-    background: none;
+    transition: all var(--duration) var(--ease-out);
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    cursor: pointer;
 }
 
 .hamburger:hover {
-    background: rgba(15, 23, 42, 0.06);
+    background: rgba(249, 115, 22, 0.08);
+    color: var(--primary);
+    border-color: var(--primary);
 }
 
-.mobileTitle {
-    font-size: 0.975rem;
+.topbarBrand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.topbarLogo {
+    max-height: 30px;
+    width: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.topbarAppTitle {
+    font-size: 0.925rem;
     font-weight: 700;
     color: var(--text-main);
     letter-spacing: -0.2px;
 }
 
+.topbarRight {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbarRoleBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.topbarUser {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.topbarAvatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), #ea580c);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: white;
+}
+
+.topbarUserName {
+    font-size: 0.825rem;
+    font-weight: 600;
+    color: var(--text-main);
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.topbarLogoutBtn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    cursor: pointer;
+    transition: all var(--duration);
+}
+
+.topbarLogoutBtn:hover {
+    background: var(--danger-light);
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
 /* ── Page Content ── */
 .content {
     flex: 1;
-    padding: 28px;
+    padding: 24px 28px;
 }
 
 /* ── Overlay (Mobile Drawer backdrop) ── */
@@ -330,10 +417,10 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.35);
+    background: rgba(15, 23, 42, 0.45);
     z-index: 38;
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
     animation: fadeIn 0.2s ease both;
 }
 
@@ -347,7 +434,7 @@
     }
 }
 
-/* ── Responsive ── */
+/* ── Responsive Mobile (max-width: 768px) ── */
 @media (max-width: 768px) {
     .sidebar {
         position: fixed;
@@ -355,23 +442,29 @@
         left: 0;
         height: 100dvh;
         transform: translateX(-100%);
-        box-shadow: 4px 0 15px rgba(0, 0, 0, 0.05);
-        z-index: 39;
+        margin-left: 0 !important;
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+        z-index: 50;
     }
 
     .sidebar.open {
         transform: translateX(0);
     }
 
-    .mobileHeader {
-        display: flex;
-    }
-
     .overlay.visible {
         display: block;
     }
 
+    .topbar {
+        padding: 10px 14px;
+    }
+
+    .topbarAppTitle,
+    .topbarUserName {
+        display: none;
+    }
+
     .content {
-        padding: 20px 16px;
+        padding: 16px 12px;
     }
 }
