@@ -2,7 +2,20 @@
  * outletService.js
  * Semua operasi Supabase yang berkaitan dengan role Outlet.
  *
- * Catatan penting: Kolom `barcode` pada tabel `master_products` adalah Item Code / Kode Produk sebenarnya.
+ * Tabel & kolom (sesuai skema aktual Supabase):
+ *
+ *  master_products:
+ *    product_code (PK), barcode, item_description, status,
+ *    procurement_id, supplier, division, uom,
+ *    unit_cost_no_vat, unit_cost_with_vat, price_non_member, price_discounted
+ *
+ *  procode_exclude:
+ *    product_code
+ *
+ *  stocks_ed:
+ *    id (PK, uuid auto-gen), outlet_code (FK → master_outlets),
+ *    product_code, batch_id, ed_date, qty, remark,
+ *    input_period, status_action, created_at
  */
 
 import { supabase } from './supabaseClient';
@@ -13,15 +26,15 @@ import { supabase } from './supabaseClient';
 
 /**
  * Cari produk dari master_products.
- * Pencarian berdasarkan deskripsi (item_description) ATAU barcode (sebagai kode produk).
+ * Pencarian berdasarkan item_description ATAU product_code ATAU barcode.
  */
 export async function searchProducts(query) {
     if (!query || query.trim().length < 2) return [];
 
     const { data, error } = await supabase
         .from('master_products')
-        .select('barcode, item_description, uom')
-        .or(`item_description.ilike.%${query.trim()}%,barcode.ilike.%${query.trim()}%`)
+        .select('product_code, barcode, item_description, uom')
+        .or(`item_description.ilike.%${query.trim()}%,product_code.ilike.%${query.trim()}%,barcode.ilike.%${query.trim()}%`)
         .order('item_description', { ascending: true })
         .limit(30);
 
@@ -30,23 +43,33 @@ export async function searchProducts(query) {
 }
 
 /**
- * Cari produk HANYA berdasarkan kolom barcode (yang merupakan Kode Produk sebenarnya).
- * Dipakai oleh scanner fisik dan input kode produk.
- * Mengembalikan objek produk { barcode, item_description, uom } atau null.
+ * Cari produk berdasarkan kode barcode / kode produk.
+ * Mencari ke kolom `product_code` terlebih dahulu, jika tidak ketemu baru mencari ke kolom `barcode`.
+ * Dipakai oleh scanner fisik, kamera, dan input manual.
  */
 export async function searchProductByBarcode(barcodeStr) {
     if (!barcodeStr || !barcodeStr.trim()) return null;
     const value = barcodeStr.trim();
 
-    // HANYA membaca kolom barcode pada tabel master_products
-    const { data, error } = await supabase
+    // 1. Coba cocokkan ke product_code terlebih dahulu (sesuai versi main)
+    const { data: byCode, error: err1 } = await supabase
         .from('master_products')
-        .select('barcode, item_description, uom')
+        .select('product_code, barcode, item_description, uom')
+        .eq('product_code', value)
+        .maybeSingle();
+
+    if (err1) throw err1;
+    if (byCode) return byCode;
+
+    // 2. Fallback: coba cocokkan ke kolom barcode
+    const { data: byBarcode, error: err2 } = await supabase
+        .from('master_products')
+        .select('product_code, barcode, item_description, uom')
         .eq('barcode', value)
         .maybeSingle();
 
-    if (error) throw error;
-    return data;
+    if (err2) throw err2;
+    return byBarcode; // null jika tidak ditemukan di keduanya
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,7 +239,7 @@ export async function fetchOutletStocks(outletCode) {
         for (let i = 0; i < uniqueProductCodes.length; i += chunkSize) {
             const chunk = uniqueProductCodes.slice(i, i + chunkSize);
 
-            // Lookup HANYA ke kolom barcode master_products
+            // Lookup ke kolom barcode
             const { data: bCodeData } = await supabase
                 .from('master_products')
                 .select('*')
@@ -224,6 +247,20 @@ export async function fetchOutletStocks(outletCode) {
 
             if (bCodeData) {
                 bCodeData.forEach(p => {
+                    if (p.barcode) productMap[String(p.barcode).trim()] = p;
+                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
+                });
+            }
+
+            // Fallback lookup ke kolom product_code
+            const { data: pCodeData } = await supabase
+                .from('master_products')
+                .select('*')
+                .in('product_code', chunk);
+
+            if (pCodeData) {
+                pCodeData.forEach(p => {
+                    if (p.product_code) productMap[String(p.product_code).trim()] = p;
                     if (p.barcode) productMap[String(p.barcode).trim()] = p;
                 });
             }
