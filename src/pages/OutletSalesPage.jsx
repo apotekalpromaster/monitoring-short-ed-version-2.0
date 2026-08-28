@@ -1,6 +1,6 @@
 /**
  * OutletSalesPage.jsx — Form Pencatatan & Riwayat Penjualan Produk Short ED
- * Desain POS 2-Kolom: Master Products Lookup (Barcode Column as Item Code), No Batch, Edit & Delete Cart Items.
+ * Desain POS 2-Kolom: Master Products Lookup, No Batch, Edit & Delete Cart Items, Camera Barcode Scanner.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -8,11 +8,12 @@ import {
     Receipt, Calendar, Hash, Package,
     CheckCircle2, AlertTriangle, Loader2, Download,
     RefreshCw, Search, X, TrendingUp, ShoppingBag,
-    Plus, Trash2, ShoppingCart, Pencil, Check
+    Plus, Trash2, ShoppingCart, Pencil, Check, Camera
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { searchProducts, searchProductByBarcode } from '../services/outletService';
 import { recordBulkShortEdSales, fetchOutletSales, exportSalesToExcel } from '../services/salesService';
+import BarcodeModal from '../components/BarcodeModal';
 import styles from './OutletSalesPage.module.css';
 
 // ── Formatters ──
@@ -42,10 +43,13 @@ export default function OutletSalesPage() {
     const [transactionDate, setTransactionDate] = useState(getTodayString());
     const [receiptNumber, setReceiptNumber] = useState('');
 
+    // ── Scanner & Camera State ──
+    const [cameraScanOpen, setCameraScanOpen] = useState(false);
+
     // ── Current Item Input State ──
     const [productQuery, setProductQuery] = useState('');
     const [barcodeQuery, setBarcodeQuery] = useState('');
-    const [selectedProduct, setSelectedProduct] = useState(null); // { barcode, item_description, uom }
+    const [selectedProduct, setSelectedProduct] = useState(null); // { product_code, barcode, item_description, uom }
     const [productDropdownOpen, setProductDropdownOpen] = useState(false);
     const [productSuggestions, setProductSuggestions] = useState([]);
     const [searchingProduct, setSearchingProduct] = useState(false);
@@ -151,11 +155,11 @@ export default function OutletSalesPage() {
     const handleSelectProduct = (prod) => {
         setSelectedProduct(prod);
         setProductQuery('');
-        setBarcodeQuery(prod.barcode || '');
+        setBarcodeQuery(prod.barcode || prod.product_code || '');
         setProductDropdownOpen(false);
     };
 
-    // ── 4. Handler Ketik / Scan Kode Produk (HANYA membaca kolom barcode) ──
+    // ── 4. Handler Ketik / Scan Kode Produk ──
     const handleBarcodeChange = async (val) => {
         setBarcodeQuery(val);
         const clean = val.trim();
@@ -171,6 +175,30 @@ export default function OutletSalesPage() {
             }
         } catch (err) {
             console.error('Error product code lookup:', err);
+        }
+    };
+
+    // ── Handler Scan via Kamera ──
+    const handleCameraScanResult = async (scannedCode) => {
+        setCameraScanOpen(false);
+        if (!scannedCode || !scannedCode.trim()) return;
+
+        const clean = scannedCode.trim();
+        setBarcodeQuery(clean);
+        setToast({ message: 'Mencari produk...', type: 'info' });
+
+        try {
+            const matched = await searchProductByBarcode(clean);
+            if (matched) {
+                setSelectedProduct(matched);
+                setBarcodeQuery(matched.barcode || matched.product_code || clean);
+                setProductQuery('');
+                setToast({ message: `Produk ditemukan: ${matched.item_description}`, type: 'success' });
+            } else {
+                setToast({ message: `Kode / Barcode "${clean}" tidak terdaftar di Master Produk.`, type: 'error' });
+            }
+        } catch (err) {
+            setToast({ message: 'Gagal mencari produk: ' + err.message, type: 'error' });
         }
     };
 
@@ -205,8 +233,7 @@ export default function OutletSalesPage() {
         const numericQty = parseFloat(qty);
         const numericPrice = parseFloat(unitPrice);
         const subtotal = Math.round(numericQty * numericPrice * 100) / 100;
-        // Kolom barcode adalah Kode Produk sebenarnya
-        const pCode = selectedProduct.barcode || selectedProduct.product_code || barcodeQuery.trim();
+        const pCode = selectedProduct.product_code || selectedProduct.barcode || barcodeQuery.trim();
         const pName = selectedProduct.item_description || selectedProduct.description || pCode;
         const pUom = selectedProduct.uom || 'Pcs';
 
@@ -257,6 +284,7 @@ export default function OutletSalesPage() {
     const handleEditItem = (item) => {
         setEditingItemId(item.id);
         setSelectedProduct({
+            product_code: item.productCode,
             barcode: item.productCode,
             item_description: item.productName,
             uom: item.uom
@@ -346,7 +374,7 @@ export default function OutletSalesPage() {
         const q = tableSearch.trim().toLowerCase();
         return sales.filter(s => {
             const name = (s.master_products?.item_description || '').toLowerCase();
-            const code = (s.master_products?.barcode || s.product_code || '').toLowerCase();
+            const code = (s.product_code || s.master_products?.barcode || '').toLowerCase();
             const receipt = (s.receipt_number || '').toLowerCase();
             return name.includes(q) || code.includes(q) || receipt.includes(q);
         });
@@ -397,6 +425,13 @@ export default function OutletSalesPage() {
                     </button>
                 </div>
             )}
+
+            {/* Camera Barcode Scanner Modal */}
+            <BarcodeModal
+                isOpen={cameraScanOpen}
+                onScan={handleCameraScanResult}
+                onClose={() => setCameraScanOpen(false)}
+            />
 
             {/* Page Header */}
             <div className={styles.pageHeader}>
@@ -526,19 +561,38 @@ export default function OutletSalesPage() {
 
                             <form onSubmit={handleAddOrUpdateItem}>
                                 <div className={styles.formGridFull}>
-                                    {/* Scan / Ketik Kode Produk */}
+                                    {/* Scan / Ketik Kode Produk + Tombol Kamera */}
                                     <div className={styles.formGroup}>
                                         <label className={styles.formLabel}>
                                             <Hash size={13} />
                                             Kode Produk (Scan / Ketik)
                                         </label>
-                                        <input
-                                            type="text"
-                                            className={styles.formInput}
-                                            placeholder="Scan barcode atau ketik kode produk..."
-                                            value={barcodeQuery}
-                                            onChange={e => handleBarcodeChange(e.target.value)}
-                                        />
+                                        <div style={{ position: 'relative', display: 'flex', gap: '8px' }}>
+                                            <input
+                                                type="text"
+                                                className={styles.formInput}
+                                                placeholder="Scan barcode atau ketik kode produk..."
+                                                value={barcodeQuery}
+                                                onChange={e => handleBarcodeChange(e.target.value)}
+                                                style={{ flex: 1 }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setCameraScanOpen(true)}
+                                                title="Scan dengan Kamera Ponsel"
+                                                style={{
+                                                    minWidth: '42px', height: '42px',
+                                                    background: 'var(--primary)', color: 'white',
+                                                    border: 'none', borderRadius: 'var(--radius-sm)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    cursor: 'pointer', flexShrink: 0,
+                                                    boxShadow: '0 2px 8px rgba(249, 115, 22, 0.25)',
+                                                    transition: 'all var(--duration)',
+                                                }}
+                                            >
+                                                <Camera size={18} />
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Lookup Nama Obat dari master_products */}
@@ -584,13 +638,16 @@ export default function OutletSalesPage() {
                                                     ) : (
                                                         productSuggestions.map(p => (
                                                             <div
-                                                                key={p.barcode}
+                                                                key={p.product_code || p.barcode}
                                                                 onClick={() => handleSelectProduct(p)}
                                                                 className={styles.dropdownItem}
                                                             >
                                                                 <div className={styles.dropdownItemName}>{p.item_description}</div>
                                                                 <div className={styles.dropdownItemMeta}>
-                                                                    <span>Kode: <code>{p.barcode}</code></span>
+                                                                    <span>Kode: <code>{p.product_code || p.barcode}</code></span>
+                                                                    {p.barcode && p.barcode !== p.product_code && (
+                                                                        <span>· Barcode: <code>{p.barcode}</code></span>
+                                                                    )}
                                                                     <span>· Satuan: {p.uom || 'Pcs'}</span>
                                                                 </div>
                                                             </div>
@@ -610,7 +667,7 @@ export default function OutletSalesPage() {
                                                 {selectedProduct.item_description || selectedProduct.description}
                                             </div>
                                             <div className={styles.selectedProductDetails}>
-                                                <span>Kode Produk: <code>{selectedProduct.barcode || selectedProduct.product_code}</code></span>
+                                                <span>Kode Produk: <code>{selectedProduct.product_code || selectedProduct.barcode}</code></span>
                                                 <span>·</span>
                                                 <span>Satuan: <strong>{selectedProduct.uom || 'Pcs'}</strong></span>
                                             </div>
@@ -827,7 +884,7 @@ export default function OutletSalesPage() {
                 </div>
             </div>
 
-            {/* ── BAGIAN BAWAH: TABEL RIWAYAT PENJUALAN APOTEK (KODE PRODUK DARI BARCODE) ── */}
+            {/* ── BAGIAN BAWAH: TABEL RIWAYAT PENJUALAN APOTEK ── */}
             <div className={styles.historySection}>
                 <div className={styles.historyToolbar}>
                     <div>
@@ -935,7 +992,7 @@ export default function OutletSalesPage() {
                                         <td>
                                             <span className={styles.receiptBadge}>{s.receipt_number}</span>
                                         </td>
-                                        <td><code className={styles.codeBadge}>{s.master_products?.barcode || s.product_code}</code></td>
+                                        <td><code className={styles.codeBadge}>{s.product_code || s.master_products?.barcode}</code></td>
                                         <td style={{ fontWeight: 600, color: 'var(--text-main)' }}>
                                             {s.master_products?.item_description || '(Tidak diketahui)'}
                                         </td>
