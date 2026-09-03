@@ -602,7 +602,7 @@ export default function OutletSalesPage() {
                             <div className={styles.modalAlertBox}>
                                 <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
                                 <div>
-                                    <strong>Perhatian:</strong> Transaksi yang disimpan akan langsung tercatat secara permanen di <strong>Rekap Penjualan Nasional</strong> dan memengaruhi kalkulasi omzet apotek. Pastikan tanggal transaksi dan nominal sudah sesuai struk fisik kasir.
+                                    <strong>Perhatian:</strong> Transaksi yang disimpan akan langsung tercatat secara permanen di <strong>Rekap Penjualan Nasional</strong> dan mempengaruhi penilaian pencapaian Pillar Short ED. Pastikan tanggal transaksi dan nominal sudah sesuai struk fisik kasir.
                                 </div>
                             </div>
                         </div>
