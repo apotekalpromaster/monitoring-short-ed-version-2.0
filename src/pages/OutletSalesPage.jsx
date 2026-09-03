@@ -51,6 +51,7 @@ export default function OutletSalesPage() {
     const [productQuery, setProductQuery] = useState('');
     const [barcodeQuery, setBarcodeQuery] = useState('');
     const [selectedProduct, setSelectedProduct] = useState(null); // { barcode, product_code, item_description, uom }
+    const [barcodeError, setBarcodeError] = useState('');
     const [productDropdownOpen, setProductDropdownOpen] = useState(false);
     const [productSuggestions, setProductSuggestions] = useState([]);
     const [searchingProduct, setSearchingProduct] = useState(false);
@@ -186,6 +187,7 @@ export default function OutletSalesPage() {
     // ── 3. Handler Pilih Produk dari Dropdown Autocomplete ──
     const handleSelectProduct = (prod) => {
         setSelectedProduct(prod);
+        setBarcodeError('');
         setProductQuery('');
         // Selalu tampilkan nilai dari kolom barcode
         setBarcodeQuery(prod.barcode || prod.product_code || '');
@@ -198,6 +200,7 @@ export default function OutletSalesPage() {
     // ── 4. Handler Ketik / Scan Kode Produk ──
     const handleBarcodeChange = async (val) => {
         setBarcodeQuery(val);
+        setBarcodeError('');
         const clean = val.trim();
         if (!clean) {
             setSelectedProduct(null);
@@ -208,6 +211,7 @@ export default function OutletSalesPage() {
             const matched = await searchProductByBarcode(clean);
             if (matched) {
                 setSelectedProduct(matched);
+                setBarcodeError('');
                 // Jika ditemukan via product_code / barcode, tampilkan data dari kolom barcode
                 if (matched.barcode && matched.barcode !== clean) {
                     setBarcodeQuery(matched.barcode);
@@ -215,9 +219,66 @@ export default function OutletSalesPage() {
                 setTimeout(() => {
                     qtyInputRef.current?.focus();
                 }, 80);
+            } else {
+                setSelectedProduct(null);
             }
         } catch (err) {
             console.error('Error product code lookup:', err);
+        }
+    };
+
+    // ── Handler Tekan Enter pada Input Barcode (Scanner Fisik / Keyboard) ──
+    const handleBarcodeKeyDown = async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const clean = barcodeQuery.trim();
+            if (!clean) return;
+
+            try {
+                const matched = await searchProductByBarcode(clean);
+                if (matched) {
+                    setSelectedProduct(matched);
+                    setBarcodeError('');
+                    if (matched.barcode && matched.barcode !== clean) {
+                        setBarcodeQuery(matched.barcode);
+                    }
+                    setToast({ message: `Produk ditemukan: ${matched.item_description}`, type: 'success' });
+                    setTimeout(() => {
+                        qtyInputRef.current?.focus();
+                    }, 80);
+                } else {
+                    setSelectedProduct(null);
+                    const errMsg = `Kode / Barcode "${clean}" tidak terdaftar di Master Produk.`;
+                    setBarcodeError(errMsg);
+                    setToast({ message: errMsg, type: 'error' });
+                }
+            } catch (err) {
+                const errMsg = 'Gagal mencari produk: ' + err.message;
+                setBarcodeError(errMsg);
+                setToast({ message: errMsg, type: 'error' });
+            }
+        }
+    };
+
+    // ── Handler Saat Input Barcode Kehilangan Fokus (Blur) ──
+    const handleBarcodeBlur = async () => {
+        const clean = barcodeQuery.trim();
+        if (!clean) {
+            setBarcodeError('');
+            return;
+        }
+        if (!selectedProduct && clean.length >= 3) {
+            try {
+                const matched = await searchProductByBarcode(clean);
+                if (matched) {
+                    setSelectedProduct(matched);
+                    setBarcodeError('');
+                } else {
+                    setBarcodeError(`Kode / Barcode "${clean}" tidak terdaftar di Master Produk.`);
+                }
+            } catch (err) {
+                setBarcodeError('Gagal mencari produk: ' + err.message);
+            }
         }
     };
 
@@ -242,6 +303,8 @@ export default function OutletSalesPage() {
                 }, 80);
             } else {
                 setBarcodeQuery(clean);
+                setSelectedProduct(null);
+                setBarcodeError(`Kode / Barcode "${clean}" tidak terdaftar di Master Produk.`);
                 setToast({ message: `Kode / Barcode "${clean}" tidak terdaftar di Master Produk.`, type: 'error' });
             }
         } catch (err) {
@@ -322,6 +385,7 @@ export default function OutletSalesPage() {
 
         // Reset input item
         setSelectedProduct(null);
+        setBarcodeError('');
         setBarcodeQuery('');
         setProductQuery('');
         setQty('');
@@ -352,6 +416,7 @@ export default function OutletSalesPage() {
     const handleCancelEdit = () => {
         setEditingItemId(null);
         setSelectedProduct(null);
+        setBarcodeError('');
         setBarcodeQuery('');
         setProductQuery('');
         setQty('');
@@ -779,10 +844,12 @@ export default function OutletSalesPage() {
                                             <input
                                                 ref={barcodeInputRef}
                                                 type="text"
-                                                className={styles.formInput}
-                                                placeholder="Scan barcode atau ketik kode produk..."
+                                                className={`${styles.formInput} ${barcodeError ? styles.formInputError : ''}`}
+                                                placeholder="Scan barcode atau ketik kode produk (tekan Enter)..."
                                                 value={barcodeQuery}
                                                 onChange={e => handleBarcodeChange(e.target.value)}
+                                                onKeyDown={handleBarcodeKeyDown}
+                                                onBlur={handleBarcodeBlur}
                                                 style={{ flex: 1 }}
                                             />
                                             <button
@@ -802,6 +869,16 @@ export default function OutletSalesPage() {
                                                 <Camera size={18} />
                                             </button>
                                         </div>
+                                        {barcodeError ? (
+                                            <div className={styles.errorText} style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px' }}>
+                                                <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+                                                <span>{barcodeError}</span>
+                                            </div>
+                                        ) : (
+                                            <div className={styles.helperText} style={{ marginTop: '3px' }}>
+                                                Scan barcode via scanner USB lalu tekan <strong>Enter</strong>, atau klik tombol kamera.
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Lookup Nama Obat dari master_products */}
@@ -880,7 +957,7 @@ export default function OutletSalesPage() {
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => { setSelectedProduct(null); setBarcodeQuery(''); setTimeout(() => barcodeInputRef.current?.focus(), 50); }}
+                                            onClick={() => { setSelectedProduct(null); setBarcodeQuery(''); setBarcodeError(''); setTimeout(() => barcodeInputRef.current?.focus(), 50); }}
                                             className={styles.btnChangeProduct}
                                         >
                                             Ganti
