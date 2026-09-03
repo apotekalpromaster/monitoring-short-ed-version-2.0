@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Receipt, Calendar, Hash, Package,
     CheckCircle2, AlertTriangle, Loader2, Download,
@@ -60,6 +61,7 @@ export default function OutletSalesPage() {
     const [cartItems, setCartItems] = useState([]);
     const [editingItemId, setEditingItemId] = useState(null); // null or string id
     const [submitting, setSubmitting] = useState(false);
+    const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 
     // ── Toast Notification State ──
     const [toast, setToast] = useState(null); // { message, type }
@@ -82,6 +84,29 @@ export default function OutletSalesPage() {
     useEffect(() => {
         barcodeInputRef.current?.focus();
     }, []);
+
+    // Kunci scroll body saat modal konfirmasi struk aktif
+    useEffect(() => {
+        if (confirmModalOpen) {
+            const originalOverflow = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            return () => {
+                document.body.style.overflow = originalOverflow;
+            };
+        }
+    }, [confirmModalOpen]);
+
+    // Keyboard ESC untuk menutup modal konfirmasi
+    useEffect(() => {
+        if (!confirmModalOpen) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && !submitting) {
+                setConfirmModalOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [confirmModalOpen, submitting]);
 
     // ── 1. Debounced Autocomplete Search dari master_products ──
     useEffect(() => {
@@ -355,8 +380,8 @@ export default function OutletSalesPage() {
         return { cartTotalQty: totalQ, cartGrandTotal: totalRp };
     }, [cartItems]);
 
-    // ── 10. Handler Submit Semua Item dalam Struk ──
-    const handleSubmitReceipt = async () => {
+    // ── 10. Handler Validasi & Buka Modal Konfirmasi Simpan Struk ──
+    const handleOpenConfirmModal = () => {
         if (!transactionDate) {
             setToast({ message: 'Tanggal transaksi wajib diisi.', type: 'error' });
             return;
@@ -369,7 +394,11 @@ export default function OutletSalesPage() {
             setToast({ message: 'Belum ada obat yang dimasukkan ke dalam struk ini.', type: 'error' });
             return;
         }
+        setConfirmModalOpen(true);
+    };
 
+    // ── Eksekusi Simpan Struk Setelah Dikonfirmasi ──
+    const handleSubmitReceipt = async () => {
         setSubmitting(true);
         try {
             await recordBulkShortEdSales({
@@ -384,6 +413,9 @@ export default function OutletSalesPage() {
                 message: `✅ Struk #${receiptNumber.trim()} berhasil disimpan! (${cartItems.length} item, Total: ${fmtRp(cartGrandTotal)})`,
                 type: 'success'
             });
+
+            // Tutup modal konfirmasi
+            setConfirmModalOpen(false);
 
             // Reset keranjang & form
             setCartItems([]);
@@ -463,6 +495,151 @@ export default function OutletSalesPage() {
                 onScan={handleCameraScanResult}
                 onClose={() => setCameraScanOpen(false)}
             />
+
+            {/* Modal Konfirmasi Simpan Transaksi Struk (Prioritas 2) */}
+            {confirmModalOpen && createPortal(
+                <div
+                    className={styles.modalOverlay}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !submitting) {
+                            setConfirmModalOpen(false);
+                        }
+                    }}
+                >
+                    <div className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+                        {/* Modal Header */}
+                        <div className={styles.modalHeader}>
+                            <div className={styles.modalTitle} id="confirm-modal-title">
+                                <ShoppingCart size={18} color="var(--primary)" />
+                                Konfirmasi Simpan Struk Kasir
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !submitting && setConfirmModalOpen(false)}
+                                className={styles.modalCloseBtn}
+                                disabled={submitting}
+                                title="Tutup modal (Esc)"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className={styles.modalBody}>
+                            {/* Ringkasan Header Struk */}
+                            <div className={styles.modalSummaryCard}>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Nomor Struk Kasir:</span>
+                                    <span className={styles.modalSummaryValue}>
+                                        <span className={styles.receiptBadge}>#{receiptNumber.trim()}</span>
+                                    </span>
+                                </div>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Tanggal Transaksi:</span>
+                                    <span className={styles.modalSummaryValue}>{formatDate(transactionDate)}</span>
+                                </div>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Apotek Pelapor:</span>
+                                    <span className={styles.modalSummaryValue}>{user?.name || user?.code}</span>
+                                </div>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Total Fisik Terjual:</span>
+                                    <span className={styles.modalSummaryValue} style={{ color: 'var(--primary)' }}>
+                                        {cartTotalQty} item ({cartItems.length} jenis obat)
+                                    </span>
+                                </div>
+                                <div className={`${styles.modalSummaryRow} ${styles.modalHighlightRow}`}>
+                                    <span className={styles.modalSummaryLabel} style={{ fontWeight: 700, color: 'var(--text-main)' }}>
+                                        Grand Total Nilai:
+                                    </span>
+                                    <span className={styles.modalHighlightAmount}>
+                                        {fmtRp(cartGrandTotal)}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Daftar Rincian Obat */}
+                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-sub)' }}>
+                                Rincian Obat dalam Struk ({cartItems.length} jenis):
+                            </div>
+                            <div className={styles.modalTableWrap}>
+                                <table className={styles.modalTable}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ width: '28px' }}>#</th>
+                                            <th>Nama Obat</th>
+                                            <th style={{ textAlign: 'right', width: '65px' }}>Qty</th>
+                                            <th style={{ textAlign: 'right', width: '85px' }}>Harga</th>
+                                            <th style={{ textAlign: 'right', width: '95px' }}>Subtotal</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {cartItems.map((item, i) => (
+                                            <tr key={item.id}>
+                                                <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
+                                                <td>
+                                                    <div style={{ fontWeight: 600 }}>{item.productName}</div>
+                                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                                        <code>{item.productCode}</code>
+                                                    </div>
+                                                </td>
+                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                                    {item.qty} {item.uom}
+                                                </td>
+                                                <td style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
+                                                    {fmtRp(item.unitPrice)}
+                                                </td>
+                                                <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
+                                                    {fmtRp(item.totalPrice)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Warning Box */}
+                            <div className={styles.modalAlertBox}>
+                                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div>
+                                    <strong>Perhatian:</strong> Transaksi yang disimpan akan langsung tercatat secara permanen di <strong>Rekap Penjualan Nasional</strong> dan memengaruhi kalkulasi omzet apotek. Pastikan tanggal transaksi dan nominal sudah sesuai struk fisik kasir.
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className={styles.modalFooter}>
+                            <button
+                                type="button"
+                                onClick={() => setConfirmModalOpen(false)}
+                                disabled={submitting}
+                                className={styles.modalBtnCancel}
+                            >
+                                Periksa Kembali
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSubmitReceipt}
+                                disabled={submitting}
+                                className={styles.modalBtnConfirm}
+                            >
+                                {submitting ? (
+                                    <>
+                                        <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                                        Menyimpan Transaksi...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Check size={16} />
+                                        Ya, Simpan Transaksi ({fmtRp(cartGrandTotal)})
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
 
             {/* Page Header */}
             <div className={styles.pageHeader}>
@@ -893,21 +1070,12 @@ export default function OutletSalesPage() {
 
                             <button
                                 type="button"
-                                onClick={handleSubmitReceipt}
+                                onClick={handleOpenConfirmModal}
                                 disabled={submitting || cartItems.length === 0 || !receiptNumber.trim() || !transactionDate}
                                 className={styles.btnSubmitReceipt}
                             >
-                                {submitting ? (
-                                    <>
-                                        <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                                        Menyimpan Transaksi Struk...
-                                    </>
-                                ) : (
-                                    <>
-                                        <CheckCircle2 size={18} />
-                                        Simpan Struk ({cartItems.length} Item)
-                                    </>
-                                )}
+                                <CheckCircle2 size={18} />
+                                Simpan Struk ({cartItems.length} Item)
                             </button>
                         </div>
                     </div>
