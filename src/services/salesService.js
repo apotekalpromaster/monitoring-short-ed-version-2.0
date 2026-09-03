@@ -435,20 +435,75 @@ export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Sh
 }
 
 /**
- * Menghapus / membatalkan satu transaksi penjualan Short ED dari database (Void).
+ * Membatalkan transaksi penjualan Short ED dengan prinsip Audit Archive:
+ * 1. Menyalin data transaksi lengkap ke tabel `sales_short_ed_void_history` beserta metadata audit (void_at, void_by, void_reason, void_notes).
+ * 2. Hanya jika pencatatan ke tabel audit berhasil, baru baris dihapus dari tabel aktif `sales_short_ed`.
  */
-export async function deleteShortEdSale(saleId) {
-    if (!saleId) throw new Error('ID transaksi penjualan tidak valid.');
+export async function voidShortEdSale({ sale, voidBy, voidReason, voidNotes = '' }) {
+    if (!sale || !sale.id) throw new Error('Data transaksi yang akan dibatalkan tidak valid.');
+    if (!voidBy) throw new Error('Identitas kasir/petugas (void_by) wajib disertakan.');
+    if (!voidReason) throw new Error('Alasan pembatalan (void_reason) wajib diisi.');
 
-    const { error } = await supabase
+    // 1. Simpan salinan transaksi lengkap ke tabel riwayat audit void
+    const voidRecord = {
+        original_sale_id: sale.id,
+        outlet_code: sale.outlet_code,
+        transaction_date: sale.transaction_date,
+        receipt_number: sale.receipt_number,
+        product_code: sale.product_code,
+        batch_id: sale.batch_id || '-',
+        ed_date: sale.ed_date || null,
+        qty: parseFloat(sale.qty),
+        unit_price: parseFloat(sale.unit_price),
+        total_price: parseFloat(sale.total_price) || (parseFloat(sale.qty) * parseFloat(sale.unit_price)),
+        input_period: sale.input_period || (sale.transaction_date ? sale.transaction_date.slice(0, 7) : null),
+        created_by: sale.created_by || '-',
+        created_at: sale.created_at || new Date().toISOString(),
+        void_at: new Date().toISOString(),
+        void_by: voidBy,
+        void_reason: voidReason,
+        void_notes: voidNotes ? voidNotes.trim() : null
+    };
+
+    const { error: archiveError } = await supabase
+        .from('sales_short_ed_void_history')
+        .insert(voidRecord);
+
+    if (archiveError) {
+        throw new Error('Gagal mencatat audit log pembatalan ke database: ' + archiveError.message);
+    }
+
+    // 2. Setelah salinan audit tersimpan aman di tabel history, baru hapus dari tabel aktif sales_short_ed
+    const { error: deleteError } = await supabase
         .from('sales_short_ed')
         .delete()
-        .eq('id', saleId);
+        .eq('id', sale.id);
 
-    if (error) throw error;
+    if (deleteError) {
+        throw new Error('Gagal menghapus transaksi dari tabel aktif: ' + deleteError.message);
+    }
 
     return {
         success: true,
-        message: 'Transaksi berhasil dibatalkan / dihapus.'
+        message: `Transaksi struk #${sale.receipt_number} berhasil dibatalkan dan tercatat di riwayat audit.`
     };
+}
+
+/**
+ * Mengambil riwayat audit transaksi yang pernah dibatalkan (void history).
+ */
+export async function fetchVoidHistory({ outletCode = null, limit = 100 } = {}) {
+    let query = supabase
+        .from('sales_short_ed_void_history')
+        .select('*')
+        .order('void_at', { ascending: false })
+        .limit(limit);
+
+    if (outletCode) {
+        query = query.eq('outlet_code', outletCode);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
 }

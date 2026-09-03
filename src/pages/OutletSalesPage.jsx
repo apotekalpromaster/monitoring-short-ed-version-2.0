@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { searchProducts, searchProductByBarcode } from '../services/outletService';
-import { recordBulkShortEdSales, fetchOutletSales, exportSalesToExcel, deleteShortEdSale } from '../services/salesService';
+import { recordBulkShortEdSales, fetchOutletSales, exportSalesToExcel, voidShortEdSale } from '../services/salesService';
 import BarcodeModal from '../components/BarcodeModal';
 import styles from './OutletSalesPage.module.css';
 
@@ -558,10 +558,14 @@ export default function OutletSalesPage() {
         if (!voidTarget) return;
         setVoiding(true);
         try {
-            await deleteShortEdSale(voidTarget.id);
-            const reasonText = voidReason === 'Lainnya' ? (voidCustomReason.trim() || 'Lainnya') : voidReason;
+            await voidShortEdSale({
+                sale: voidTarget,
+                voidBy: user?.name || user?.code || 'Kasir',
+                voidReason: voidReason,
+                voidNotes: voidCustomReason
+            });
             setToast({
-                message: `✓ Transaksi struk #${voidTarget.receipt_number} (${voidTarget.master_products?.item_description || voidTarget.product_code}) berhasil dibatalkan.`,
+                message: `✓ Transaksi struk #${voidTarget.receipt_number} berhasil dibatalkan dan tercatat aman di riwayat audit.`,
                 type: 'success'
             });
             setVoidTarget(null);
@@ -845,7 +849,7 @@ export default function OutletSalesPage() {
                             <div className={styles.modalAlertBox} style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>
                                 <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
                                 <div>
-                                    <strong>Peringatan Void:</strong> Data item ini akan langsung dihapus dari riwayat transaksi apotek Anda dan kalkulasi omzet nasional otomatis disesuaikan kembali.
+                                    <strong>Pencegahan Manipulasi (Audit Trail):</strong> Data transaksi ini akan disalin permanen ke <strong>Tabel Riwayat Audit (sales_short_ed_void_history)</strong> lengkap dengan waktu, nama kasir, dan alasan pembatalan, kemudian baru dihapus dari omzet aktif apotek.
                                 </div>
                             </div>
                         </div>
