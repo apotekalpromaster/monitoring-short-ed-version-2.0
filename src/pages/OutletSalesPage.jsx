@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { searchProducts, searchProductByBarcode } from '../services/outletService';
-import { recordBulkShortEdSales, fetchOutletSales, exportSalesToExcel } from '../services/salesService';
+import { recordBulkShortEdSales, fetchOutletSales, exportSalesToExcel, deleteShortEdSale } from '../services/salesService';
 import BarcodeModal from '../components/BarcodeModal';
 import styles from './OutletSalesPage.module.css';
 
@@ -64,6 +64,12 @@ export default function OutletSalesPage() {
     const [submitting, setSubmitting] = useState(false);
     const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 
+    // ── Void / Batalkan Transaksi Struk State (Prioritas 5) ──
+    const [voidTarget, setVoidTarget] = useState(null); // Sale object yang akan di-void
+    const [voidReason, setVoidReason] = useState('Salah input Qty / Harga');
+    const [voidCustomReason, setVoidCustomReason] = useState('');
+    const [voiding, setVoiding] = useState(false);
+
     // ── Toast Notification State ──
     const [toast, setToast] = useState(null); // { message, type }
 
@@ -108,6 +114,18 @@ export default function OutletSalesPage() {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [confirmModalOpen, submitting]);
+
+    // Keyboard ESC untuk menutup modal void
+    useEffect(() => {
+        if (!voidTarget) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && !voiding) {
+                setVoidTarget(null);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [voidTarget, voiding]);
 
     // ── 1. Debounced Autocomplete Search dari master_products ──
     useEffect(() => {
@@ -529,6 +547,32 @@ export default function OutletSalesPage() {
         };
     }, [filteredSales]);
 
+    // ── 12B. Handler Void / Hapus Transaksi Struk (Prioritas 5) ──
+    const handleOpenVoidModal = (sale) => {
+        setVoidTarget(sale);
+        setVoidReason('Salah input Qty / Harga');
+        setVoidCustomReason('');
+    };
+
+    const handleConfirmVoid = async () => {
+        if (!voidTarget) return;
+        setVoiding(true);
+        try {
+            await deleteShortEdSale(voidTarget.id);
+            const reasonText = voidReason === 'Lainnya' ? (voidCustomReason.trim() || 'Lainnya') : voidReason;
+            setToast({
+                message: `✓ Transaksi struk #${voidTarget.receipt_number} (${voidTarget.master_products?.item_description || voidTarget.product_code}) berhasil dibatalkan.`,
+                type: 'success'
+            });
+            setVoidTarget(null);
+            loadSalesData();
+        } catch (err) {
+            setToast({ message: 'Gagal membatalkan transaksi: ' + err.message, type: 'error' });
+        } finally {
+            setVoiding(false);
+        }
+    };
+
     // ── 13. Download Excel ──
     const handleDownloadExcel = () => {
         if (!filteredSales || filteredSales.length === 0) {
@@ -697,6 +741,140 @@ export default function OutletSalesPage() {
                                     <>
                                         <Check size={16} />
                                         Ya, Simpan Transaksi ({fmtRp(cartGrandTotal)})
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Modal Konfirmasi Pembatalan / Void Transaksi (Prioritas 5) */}
+            {voidTarget && createPortal(
+                <div
+                    className={styles.modalOverlay}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !voiding) {
+                            setVoidTarget(null);
+                        }
+                    }}
+                >
+                    <div className={styles.modalCard} role="dialog" aria-modal="true" style={{ maxWidth: '480px' }}>
+                        <div className={styles.modalHeader}>
+                            <div className={styles.modalTitle} style={{ color: 'var(--danger)' }}>
+                                <Trash2 size={18} />
+                                Batalkan / Void Transaksi Struk
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !voiding && setVoidTarget(null)}
+                                className={styles.modalCloseBtn}
+                                disabled={voiding}
+                                title="Tutup (Esc)"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className={styles.modalBody}>
+                            <div className={styles.modalSummaryCard}>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Nomor Struk:</span>
+                                    <span className={styles.modalSummaryValue}>
+                                        <span className={styles.receiptBadge}>#{voidTarget.receipt_number}</span>
+                                    </span>
+                                </div>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Tanggal Transaksi:</span>
+                                    <span className={styles.modalSummaryValue}>{formatDate(voidTarget.transaction_date)}</span>
+                                </div>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Nama Produk:</span>
+                                    <span className={styles.modalSummaryValue} style={{ textAlign: 'right', maxWidth: '60%' }}>
+                                        {voidTarget.master_products?.item_description || voidTarget.product_code}
+                                    </span>
+                                </div>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Jumlah Terjual:</span>
+                                    <span className={styles.modalSummaryValue} style={{ color: 'var(--primary)' }}>
+                                        {voidTarget.qty} {voidTarget.master_products?.uom || 'Pcs'}
+                                    </span>
+                                </div>
+                                <div className={`${styles.modalSummaryRow} ${styles.modalHighlightRow}`}>
+                                    <span className={styles.modalSummaryLabel} style={{ fontWeight: 700, color: 'var(--text-main)' }}>
+                                        Total Nilai Transaksi:
+                                    </span>
+                                    <span className={styles.modalHighlightAmount} style={{ color: 'var(--danger)' }}>
+                                        {fmtRp(voidTarget.total_price || (voidTarget.qty * voidTarget.unit_price))}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className={styles.formGroup}>
+                                <label className={styles.formLabel}>
+                                    Alasan Pembatalan / Void <span className={styles.requiredStar}>*</span>
+                                </label>
+                                <select
+                                    value={voidReason}
+                                    onChange={e => setVoidReason(e.target.value)}
+                                    className={styles.formSelect}
+                                >
+                                    <option value="Salah input Qty / Harga">Salah input Qty / Harga</option>
+                                    <option value="Salah pilih produk / barcode">Salah pilih produk / barcode</option>
+                                    <option value="Transaksi dibatalkan pembeli / retur">Transaksi dibatalkan pembeli / retur</option>
+                                    <option value="Nomor struk salah / input ganda">Nomor struk salah / input ganda</option>
+                                    <option value="Lainnya">Lainnya (Ketik keterangan)</option>
+                                </select>
+                            </div>
+
+                            {voidReason === 'Lainnya' && (
+                                <div className={styles.formGroup}>
+                                    <label className={styles.formLabel}>Keterangan Tambahan</label>
+                                    <input
+                                        type="text"
+                                        className={styles.formInput}
+                                        placeholder="Tulis alasan pembatalan secara ringkas..."
+                                        value={voidCustomReason}
+                                        onChange={e => setVoidCustomReason(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                            )}
+
+                            <div className={styles.modalAlertBox} style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>
+                                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div>
+                                    <strong>Peringatan Void:</strong> Data item ini akan langsung dihapus dari riwayat transaksi apotek Anda dan kalkulasi omzet nasional otomatis disesuaikan kembali.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={styles.modalFooter}>
+                            <button
+                                type="button"
+                                onClick={() => setVoidTarget(null)}
+                                disabled={voiding}
+                                className={styles.modalBtnCancel}
+                            >
+                                Tutup / Batal
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmVoid}
+                                disabled={voiding}
+                                className={styles.modalBtnConfirm}
+                                style={{ background: 'var(--danger)' }}
+                            >
+                                {voiding ? (
+                                    <>
+                                        <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                                        Membatalkan...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 size={16} />
+                                        Ya, Batalkan Transaksi Ini
                                     </>
                                 )}
                             </button>
@@ -1258,6 +1436,7 @@ export default function OutletSalesPage() {
                                     <th style={{ textAlign: 'right' }}>Harga Satuan</th>
                                     <th style={{ textAlign: 'right' }}>Total Penjualan</th>
                                     <th style={{ textAlign: 'center' }}>Waktu Input</th>
+                                    <th style={{ textAlign: 'center' }}>Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1281,6 +1460,17 @@ export default function OutletSalesPage() {
                                         <td style={{ textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                                             {s.created_at ? new Date(s.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'}
                                         </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenVoidModal(s)}
+                                                className={styles.btnVoidSale}
+                                                title="Batalkan / Hapus Transaksi Ini"
+                                            >
+                                                <Trash2 size={12} />
+                                                <span>Void</span>
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -1296,6 +1486,7 @@ export default function OutletSalesPage() {
                                     <td style={{ textAlign: 'right', color: 'var(--success)', fontSize: '0.95rem' }}>
                                         {fmtRp(totalRevenue)}
                                     </td>
+                                    <td></td>
                                     <td></td>
                                 </tr>
                             </tfoot>

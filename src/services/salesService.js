@@ -433,3 +433,22 @@ export function exportSalesToExcel(salesList, { fileName = 'Laporan_Penjualan_Sh
     const timestamp = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `${fileName}_${timestamp}.xlsx`);
 }
+
+/**
+ * Menghapus / membatalkan satu transaksi penjualan Short ED dari database (Void).
+ */
+export async function deleteShortEdSale(saleId) {
+    if (!saleId) throw new Error('ID transaksi penjualan tidak valid.');
+
+    const { error } = await supabase
+        .from('sales_short_ed')
+        .delete()
+        .eq('id', saleId);
+
+    if (error) throw error;
+
+    return {
+        success: true,
+        message: 'Transaksi berhasil dibatalkan / dihapus.'
+    };
+}
