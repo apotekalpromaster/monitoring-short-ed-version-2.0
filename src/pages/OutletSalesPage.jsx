@@ -75,6 +75,13 @@ export default function OutletSalesPage() {
     const [tableSearch, setTableSearch] = useState('');
 
     const searchWrapperRef = useRef(null);
+    const barcodeInputRef = useRef(null);
+    const qtyInputRef = useRef(null);
+
+    // Auto-focus ke input barcode saat halaman pertama kali dimuat
+    useEffect(() => {
+        barcodeInputRef.current?.focus();
+    }, []);
 
     // ── 1. Debounced Autocomplete Search dari master_products ──
     useEffect(() => {
@@ -158,6 +165,9 @@ export default function OutletSalesPage() {
         // Selalu tampilkan nilai dari kolom barcode
         setBarcodeQuery(prod.barcode || prod.product_code || '');
         setProductDropdownOpen(false);
+        setTimeout(() => {
+            qtyInputRef.current?.focus();
+        }, 50);
     };
 
     // ── 4. Handler Ketik / Scan Kode Produk ──
@@ -177,6 +187,9 @@ export default function OutletSalesPage() {
                 if (matched.barcode && matched.barcode !== clean) {
                     setBarcodeQuery(matched.barcode);
                 }
+                setTimeout(() => {
+                    qtyInputRef.current?.focus();
+                }, 80);
             }
         } catch (err) {
             console.error('Error product code lookup:', err);
@@ -199,6 +212,9 @@ export default function OutletSalesPage() {
                 setBarcodeQuery(matched.barcode || matched.product_code || clean);
                 setProductQuery('');
                 setToast({ message: `Produk ditemukan: ${matched.item_description}`, type: 'success' });
+                setTimeout(() => {
+                    qtyInputRef.current?.focus();
+                }, 80);
             } else {
                 setBarcodeQuery(clean);
                 setToast({ message: `Kode / Barcode "${clean}" tidak terdaftar di Master Produk.`, type: 'error' });
@@ -285,6 +301,11 @@ export default function OutletSalesPage() {
         setProductQuery('');
         setQty('');
         setUnitPrice('');
+
+        // Auto-refocus ke input barcode agar kasir bisa langsung scan obat berikutnya
+        setTimeout(() => {
+            barcodeInputRef.current?.focus();
+        }, 50);
     };
 
     // ── 6. Handler Edit Item dari Struk ──
@@ -310,6 +331,9 @@ export default function OutletSalesPage() {
         setProductQuery('');
         setQty('');
         setUnitPrice('');
+        setTimeout(() => {
+            barcodeInputRef.current?.focus();
+        }, 50);
     };
 
     // ── 8. Handler Hapus Item dari Struk ──
@@ -576,6 +600,7 @@ export default function OutletSalesPage() {
                                         </label>
                                         <div style={{ position: 'relative', display: 'flex', gap: '8px' }}>
                                             <input
+                                                ref={barcodeInputRef}
                                                 type="text"
                                                 className={styles.formInput}
                                                 placeholder="Scan barcode atau ketik kode produk..."
@@ -678,7 +703,7 @@ export default function OutletSalesPage() {
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => { setSelectedProduct(null); setBarcodeQuery(''); }}
+                                            onClick={() => { setSelectedProduct(null); setBarcodeQuery(''); setTimeout(() => barcodeInputRef.current?.focus(), 50); }}
                                             className={styles.btnChangeProduct}
                                         >
                                             Ganti
@@ -694,6 +719,7 @@ export default function OutletSalesPage() {
                                             Jumlah (Qty) <span className={styles.requiredStar}>*</span>
                                         </label>
                                         <input
+                                            ref={qtyInputRef}
                                             type="number"
                                             className={styles.formInput}
                                             placeholder="0"
