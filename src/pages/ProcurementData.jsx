@@ -396,10 +396,10 @@ export default function ProcurementData() {
             setSelectedRows([]);
             setActionMain('');
             setActionDetails({});
-            alert('Aksi massal berhasil dieksekusi dan disebarkan ke semua outlet!');
+            showToast('Aksi massal berhasil dieksekusi dan disebarkan ke semua outlet!', 'success');
             loadData();
         } catch (err) {
-            alert(err.message);
+            showToast('Gagal mengeksekusi aksi massal: ' + err.message, 'error');
         } finally {
             setIsSubmittingAction(false);
         }

@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-    Receipt, Calendar, Building2, TrendingUp,
+    Receipt, Calendar, Building2, TrendingUp, CheckCircle2, AlertTriangle,
     ShoppingBag, Download, RefreshCw, Search, X, Loader2
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
@@ -46,6 +46,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [tableSearch, setTableSearch] = useState('');
+    const [toast, setToast] = useState(null); // { message, type }
 
     // 1. Fetch Outlets & Sales
     const loadData = useCallback(async () => {
@@ -169,7 +170,7 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
     // Download Excel Handler
     const handleDownloadExcel = () => {
         if (!filteredSales || filteredSales.length === 0) {
-            alert('Tidak ada data penjualan untuk diunduh.');
+            setToast({ message: 'Tidak ada data penjualan untuk diunduh.', type: 'error' });
             return;
         }
         const title = isBOD
@@ -184,6 +185,17 @@ export default function SalesMonitoringPage({ role = 'AM' }) {
 
     return (
         <div className="fade-up">
+            {/* Toast Notification */}
+            {toast && (
+                <div className={`${styles.toast} ${toast.type === 'error' ? styles.toastError : styles.toastSuccess}`}>
+                    {toast.type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+                    <div style={{ flex: 1 }}>{toast.message}</div>
+                    <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0 }}>
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
+
             {/* Page Header */}
             <div className={styles.pageHeader}>
                 <div>

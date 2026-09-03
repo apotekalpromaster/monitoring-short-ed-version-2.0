@@ -41,6 +41,17 @@ export default function OutletMonitoringPage() {
     const [openPanels, setOpenPanels] = useState({});
     const [searchQuery, setSearchQuery] = useState('');
 
+    // ── Toast & Modal Notification State (Prioritas 4) ──
+    const [toast, setToast] = useState(null); // { message, type }
+    const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
+
+    // ── CSV Upload Confirmation State ──
+    const [csvConfirmModal, setCsvConfirmModal] = useState(null);
+    const [uploadingCsv, setUploadingCsv] = useState(false);
+
     // ── Inline Editing State ──
     const [editingRowId, setEditingRowId] = useState(null);
     const [editForm, setEditForm] = useState({ batchId: '', edDate: '', qty: '', remark: '' });
@@ -71,13 +82,13 @@ export default function OutletMonitoringPage() {
     };
     const handleEditSave = async (id) => {
         if (!editForm.batchId.trim() || !editForm.edDate || !editForm.qty) {
-            alert('Batch, Tanggal ED, dan Qty wajib diisi.');
+            showToast('Batch, Tanggal ED, dan Qty wajib diisi.', 'error');
             return;
         }
 
         // Period Validation
         if (editForm.edDate < MIN_ED_DATE || editForm.edDate > MAX_ED_DATE) {
-            alert(`Gagal simpan: Tanggal ED di luar periode yang diizinkan (${ED_PERIOD_LABEL}).`);
+            showToast(`Gagal simpan: Tanggal ED di luar periode yang diizinkan (${ED_PERIOD_LABEL}).`, 'error');
             return;
         }
 
@@ -99,8 +110,9 @@ export default function OutletMonitoringPage() {
                 return s;
             }));
             setEditingRowId(null);
+            showToast('✓ Perubahan data stok berhasil disimpan!', 'success');
         } catch (err) {
-            alert('Gagal menyimpan perubahan: ' + err.message);
+            showToast('Gagal menyimpan perubahan: ' + err.message, 'error');
         } finally {
             setSavingId(null);
         }
@@ -153,7 +165,7 @@ export default function OutletMonitoringPage() {
     // ── CSV Download & Upload ──
     const handleDownloadCSV = () => {
         if (!stocks || stocks.length === 0) {
-            alert('Tidak ada data untuk diunduh.');
+            showToast('Tidak ada data untuk diunduh.', 'error');
             return;
         }
 
@@ -317,36 +329,37 @@ export default function OutletMonitoringPage() {
                 throw new Error(`Semua ${records.length} baris ditolak. Tanggal ED seluruhnya di luar periode ${ED_PERIOD_LABEL}.`);
             }
 
-            // ── FIX #4: Preview konfirmasi sebelum commit ke database ───────────
-            // Susun ringkasan parsing agar user bisa memverifikasi sebelum data disimpan
-            const delimiterLabel = delimiter === ';' ? 'titik koma (;) — locale Eropa/Indonesia' : 'koma (,) — locale standar';
-            let confirmMsg = `📋 RINGKASAN UPLOAD CSV\n`;
-            confirmMsg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-            confirmMsg += `Delimiter terdeteksi : ${delimiterLabel}\n`;
-            confirmMsg += `Total baris terbaca  : ${lines.length - 1} baris\n`;
-            confirmMsg += `✅ Siap diupload     : ${validRecords.length} baris\n`;
-            if (invalidPeriod > 0) confirmMsg += `❌ Ditolak (periode) : ${invalidPeriod} baris (ED di luar ${ED_PERIOD_LABEL})\n`;
-            if (skippedFormat > 0) confirmMsg += `⚠️  Dilewati (format) : ${skippedFormat} baris (kolom tidak lengkap)\n`;
-            confirmMsg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-            confirmMsg += `Lanjutkan upload ${validRecords.length} data ke sistem?`;
+            // Susun ringkasan parsing dan buka modal konfirmasi (Prioritas 4)
+            const delimiterLabel = delimiter === ';' ? 'titik koma (;) — format Indonesia/Excel' : 'koma (,) — format standar';
+            setLoading(false);
+            setCsvConfirmModal({
+                delimiterLabel,
+                totalLines: lines.length - 1,
+                validRecords,
+                invalidPeriod,
+                skippedFormat
+            });
+        } catch (err) {
+            showToast('Gagal memproses CSV: ' + err.message, 'error');
+            setLoading(false);
+        }
+    };
 
-            const confirmed = window.confirm(confirmMsg);
-            if (!confirmed) {
-                setLoading(false);
-                return;
-            }
-            // ───────────────────────────────────────────────────────────────────
-
-            const res = await saveBulkStockEntries(user.code, validRecords);
-
-            let successMsg = `✅ Berhasil mengunggah ${res.count} data stok!`;
-            if (invalidPeriod > 0) successMsg += `\n⚠️  ${invalidPeriod} baris dilewati (ED di luar periode ${ED_PERIOD_LABEL}).`;
-            if (skippedFormat > 0) successMsg += `\n⚠️  ${skippedFormat} baris dilewati (format kolom tidak lengkap).`;
-            alert(successMsg);
+    const handleExecuteCsvUpload = async () => {
+        if (!csvConfirmModal) return;
+        setUploadingCsv(true);
+        try {
+            const res = await saveBulkStockEntries(user.code, csvConfirmModal.validRecords);
+            let successMsg = `✓ Berhasil mengunggah ${res.count} data stok!`;
+            if (csvConfirmModal.invalidPeriod > 0) successMsg += ` (${csvConfirmModal.invalidPeriod} baris dilewati karena ED di luar periode)`;
+            if (csvConfirmModal.skippedFormat > 0) successMsg += ` (${csvConfirmModal.skippedFormat} baris dilewati karena format kolom)`;
+            showToast(successMsg, 'success');
+            setCsvConfirmModal(null);
             loadData();
         } catch (err) {
-            alert('Gagal mengunggah CSV: ' + err.message);
-            setLoading(false);
+            showToast('Gagal mengunggah CSV: ' + err.message, 'error');
+        } finally {
+            setUploadingCsv(false);
         }
     };
     useEffect(() => { loadData(); }, [loadData]);
@@ -395,6 +408,115 @@ export default function OutletMonitoringPage() {
 
     return (
         <div className="fade-up">
+            {/* Toast Notification */}
+            {toast && (
+                <div className={`${styles.toast} ${toast.type === 'error' ? styles.toastError : styles.toastSuccess}`}>
+                    {toast.type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+                    <div style={{ flex: 1 }}>{toast.message}</div>
+                    <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0 }}>
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
+
+            {/* Modal Konfirmasi Upload CSV (Prioritas 4) */}
+            {csvConfirmModal && (
+                <div
+                    className={styles.modalOverlay}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !uploadingCsv) {
+                            setCsvConfirmModal(null);
+                        }
+                    }}
+                >
+                    <div className={styles.modalCard} role="dialog" aria-modal="true">
+                        <div className={styles.modalHeader}>
+                            <div className={styles.modalTitle}>
+                                <Upload size={18} color="var(--primary)" />
+                                Konfirmasi Upload File CSV
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !uploadingCsv && setCsvConfirmModal(null)}
+                                className={styles.modalCloseBtn}
+                                disabled={uploadingCsv}
+                                title="Tutup"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className={styles.modalBody}>
+                            <div className={styles.modalSummaryCard}>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Format Delimiter:</span>
+                                    <span className={styles.modalSummaryValue}>{csvConfirmModal.delimiterLabel}</span>
+                                </div>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Total Baris Terbaca:</span>
+                                    <span className={styles.modalSummaryValue}>{csvConfirmModal.totalLines} baris</span>
+                                </div>
+                                <div className={styles.modalSummaryRow}>
+                                    <span className={styles.modalSummaryLabel}>Siap Diunggah:</span>
+                                    <span className={styles.modalSummaryValue} style={{ color: 'var(--success)', fontWeight: 800 }}>
+                                        {csvConfirmModal.validRecords.length} baris
+                                    </span>
+                                </div>
+                                {csvConfirmModal.invalidPeriod > 0 && (
+                                    <div className={styles.modalSummaryRow}>
+                                        <span className={styles.modalSummaryLabel}>Ditolak (ED di luar periode):</span>
+                                        <span className={styles.modalSummaryValue} style={{ color: 'var(--danger)' }}>
+                                            {csvConfirmModal.invalidPeriod} baris
+                                        </span>
+                                    </div>
+                                )}
+                                {csvConfirmModal.skippedFormat > 0 && (
+                                    <div className={styles.modalSummaryRow}>
+                                        <span className={styles.modalSummaryLabel}>Dilewati (format tidak lengkap):</span>
+                                        <span className={styles.modalSummaryValue} style={{ color: 'var(--warning)' }}>
+                                            {csvConfirmModal.skippedFormat} baris
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', lineHeight: 1.4 }}>
+                                Data stok yang diunggah akan langsung diperbarui di database untuk apotek <strong>{user?.name || user?.code}</strong>.
+                            </div>
+                        </div>
+
+                        <div className={styles.modalFooter}>
+                            <button
+                                type="button"
+                                onClick={() => setCsvConfirmModal(null)}
+                                disabled={uploadingCsv}
+                                className={styles.modalBtnCancel}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleExecuteCsvUpload}
+                                disabled={uploadingCsv}
+                                className={styles.modalBtnConfirm}
+                            >
+                                {uploadingCsv ? (
+                                    <>
+                                        <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                                        Mengunggah...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 size={16} />
+                                        Ya, Unggah ({csvConfirmModal.validRecords.length} Data)
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className={styles.pageHeader} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                 <div>
                     <h2 className={styles.pageTitle}>Monitoring Produk ED</h2>

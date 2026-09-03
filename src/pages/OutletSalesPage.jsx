@@ -532,7 +532,7 @@ export default function OutletSalesPage() {
     // ── 13. Download Excel ──
     const handleDownloadExcel = () => {
         if (!filteredSales || filteredSales.length === 0) {
-            alert('Tidak ada data penjualan pada periode ini untuk diunduh.');
+            setToast({ message: 'Tidak ada data penjualan pada periode ini untuk diunduh.', type: 'error' });
             return;
         }
         exportSalesToExcel(filteredSales, {
