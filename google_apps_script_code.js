@@ -348,7 +348,7 @@ function step1_setupDashboardData() {
   }
   dashSheet.getRange('H27:L38').setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
 
-  // 6. Tabel Rekapitulasi Area Manager (Baris 40–57)
+    // 6. Tabel Rekapitulasi Area Manager (Baris 40–67: Kapasitas s/d 25 AM tanpa risiko tumpang tindih #REF!)
   dashSheet.setRowHeight(39, 14);
   dashSheet.setRowHeight(40, 26);
   dashSheet.getRange('B40:F40').merge().setValue('👔 REKAPITULASI KINERJA PENJUALAN SELURUH AREA MANAGER').setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('center').setVerticalAlignment('middle');
@@ -357,41 +357,45 @@ function step1_setupDashboardData() {
   const amHeaders = ['Nama Area Manager', 'Total Transaksi', 'Qty Terjual', 'Total Omzet (Rp)', '% Kontribusi'];
   dashSheet.getRange('B41:F41').setValues([amHeaders]).setBackground('#334155').setFontColor('#ffffff').setFontWeight('bold').setFontSize(8).setHorizontalAlignment('center').setVerticalAlignment('middle');
 
-  const qAM = '=IFERROR(QUERY(Sheet1!A4:L, "SELECT C, COUNT(A), SUM(H), SUM(J) WHERE C IS NOT NULL AND C <> \'-\' AND C <> \'HENDRI\' AND A <> \'ADMIN-TEST\' " & IF(C5="Semua Periode", "", " AND L = \'" & C5 & "\'") & IF(I5="Semua Apotek", "", " AND A = \'" & SUBSTITUTE(I5, "\'", "\'\'") & "\'") & " GROUP BY C ORDER BY SUM(J) DESC LABEL COUNT(A) \'\', SUM(H) \'\', SUM(J) \'\'", 0), {"-", 0, 0, 0})';
+  // Bersihkan dahulu area ekspansi B42:F66 agar QUERY tidak terhalang sisa data lama
+  dashSheet.getRange('B42:E66').clearContent();
+
+  // Batasi query dengan LIMIT 25 agar tidak pernah tumpah menabrak baris Grand Total di baris 67
+  const qAM = '=IFERROR(QUERY(Sheet1!A4:L, "SELECT C, COUNT(A), SUM(H), SUM(J) WHERE C IS NOT NULL AND C <> \'-\' AND C <> \'HENDRI\' AND A <> \'ADMIN-TEST\' " & IF(C5="Semua Periode", "", " AND L = \'" & C5 & "\'") & IF(I5="Semua Apotek", "", " AND A = \'" & SUBSTITUTE(I5, "\'", "\'\'") & "\'") & " GROUP BY C ORDER BY SUM(J) DESC LIMIT 25 LABEL COUNT(A) \'\', SUM(H) \'\', SUM(J) \'\'", 0), {"-", 0, 0, 0})';
   dashSheet.getRange('B42').setFormula(qAM);
 
-  for (let r = 42; r <= 56; r++) {
+  for (let r = 42; r <= 66; r++) {
     dashSheet.setRowHeight(r, 20);
-    dashSheet.getRange('F' + r).setFormula('=IF(OR(ISBLANK(B' + r + '), B' + r + '="", B' + r + '="-", E' + r + '=0, B8=0), "", E' + r + '/$B$8)').setNumberFormat('0.0%').setHorizontalAlignment('right');
+    dashSheet.getRange('F' + r).setFormula('=IFERROR(IF(OR(ISBLANK(B' + r + '), B' + r + '="", B' + r + '="-", E' + r + '=0, $B$8=0), "", E' + r + '/$B$8), "")').setNumberFormat('0.0%').setHorizontalAlignment('right');
     dashSheet.getRange('C' + r).setNumberFormat('#,##0').setHorizontalAlignment('center');
     dashSheet.getRange('D' + r).setNumberFormat('#,##0.##').setHorizontalAlignment('right');
     dashSheet.getRange('E' + r).setNumberFormat('"Rp "#,##0').setHorizontalAlignment('right').setFontWeight('bold');
     dashSheet.getRange('B' + r).setFontWeight('bold').setFontColor('#0f172a');
   }
-  dashSheet.getRange('B40:F56').setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
+  dashSheet.getRange('B40:F66').setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
 
-  // Grand Total Row
-  dashSheet.setRowHeight(57, 24);
-  dashSheet.getRange('B57').setValue('GRAND TOTAL PENJUALAN AM').setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
-  dashSheet.getRange('C57').setFormula('=SUM(C42:C56)').setNumberFormat('#,##0').setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
-  dashSheet.getRange('D57').setFormula('=SUM(D42:D56)').setNumberFormat('#,##0.##').setFontWeight('bold').setHorizontalAlignment('right').setVerticalAlignment('middle');
-  dashSheet.getRange('E57').setFormula('=SUM(E42:E56)').setNumberFormat('"Rp "#,##0').setFontWeight('bold').setHorizontalAlignment('right').setVerticalAlignment('middle');
-  dashSheet.getRange('F57').setFormula('=IF(B8>0, E57/$B$8, 1)').setNumberFormat('0.0%').setFontWeight('bold').setHorizontalAlignment('right').setVerticalAlignment('middle');
-  dashSheet.getRange('B57:F57').setBackground('#f1f5f9').setFontColor('#0f172a').setBorder(true, true, true, true, true, true, '#0f172a', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  // Grand Total Row AM di Baris 67
+  dashSheet.setRowHeight(67, 24);
+  dashSheet.getRange('B67').setValue('GRAND TOTAL PENJUALAN AM').setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
+  dashSheet.getRange('C67').setFormula('=SUM(C42:C66)').setNumberFormat('#,##0').setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
+  dashSheet.getRange('D67').setFormula('=SUM(D42:D66)').setNumberFormat('#,##0.##').setFontWeight('bold').setHorizontalAlignment('right').setVerticalAlignment('middle');
+  dashSheet.getRange('E67').setFormula('=SUM(E42:E66)').setNumberFormat('"Rp "#,##0').setFontWeight('bold').setHorizontalAlignment('right').setVerticalAlignment('middle');
+  dashSheet.getRange('F67').setFormula('=IFERROR(IF(B8>0, E67/$B$8, 1), 1)').setNumberFormat('0.0%').setFontWeight('bold').setHorizontalAlignment('right').setVerticalAlignment('middle');
+  dashSheet.getRange('B67:F67').setBackground('#f1f5f9').setFontColor('#0f172a').setBorder(true, true, true, true, true, true, '#0f172a', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 
-  dashSheet.getRange('B58:F68').clearContent().clearFormat();
+  dashSheet.getRange('B68:F78').clearContent().clearFormat();
 
-  // 7. Siapkan Tabel Data Sumber Grafik di Baris 70+
-  dashSheet.setRowHeight(69, 14);
-  dashSheet.getRange('B70:C70').setValues([['Area Manager', 'Total Omzet']]).setFontWeight('bold').setFontColor('#64748b');
-  dashSheet.getRange('E70:F70').setValues([['Tanggal Transaksi', 'Total Omzet']]).setFontWeight('bold').setFontColor('#64748b');
+  // 7. Siapkan Tabel Data Sumber Grafik di Baris 80+
+  dashSheet.setRowHeight(79, 14);
+  dashSheet.getRange('B80:C80').setValues([['Area Manager', 'Total Omzet']]).setFontWeight('bold').setFontColor('#64748b');
+  dashSheet.getRange('E80:F80').setValues([['Tanggal Transaksi', 'Total Omzet']]).setFontWeight('bold').setFontColor('#64748b');
 
   // Formula QUERY dinamis untuk grafik
   const qChartAM = '=IFERROR(QUERY(Sheet1!A4:L, "SELECT C, SUM(J) WHERE C IS NOT NULL AND C <> \'-\' AND C <> \'HENDRI\' AND A <> \'ADMIN-TEST\' " & IF(C5="Semua Periode", "", " AND L = \'" & C5 & "\'") & IF(I5="Semua Apotek", "", " AND A = \'" & SUBSTITUTE(I5, "\'", "\'\'") & "\'") & " GROUP BY C ORDER BY SUM(J) DESC LIMIT 15 LABEL C \'\', SUM(J) \'\'", 0), {"-", 0})';
-  dashSheet.getRange('B71').setFormula(qChartAM);
+  dashSheet.getRange('B81').setFormula(qChartAM);
 
   const qChartTren = '=IFERROR(QUERY(Sheet1!A4:L, "SELECT D, SUM(J) WHERE D IS NOT NULL AND C <> \'HENDRI\' AND A <> \'ADMIN-TEST\' " & IF(C5="Semua Periode", "", " AND L = \'" & C5 & "\'") & IF(F5="Semua AM", "", " AND C = \'" & F5 & "\'") & IF(I5="Semua Apotek", "", " AND A = \'" & SUBSTITUTE(I5, "\'", "\'\'") & "\'") & " GROUP BY D ORDER BY D ASC LABEL D \'\', SUM(J) \'\'", 0), {"-", 0})';
-  dashSheet.getRange('E71').setFormula(qChartTren);
+  dashSheet.getRange('E81').setFormula(qChartTren);
 
   ss.setActiveSheet(dashSheet);
   ss.moveActiveSheet(1);
@@ -425,7 +429,7 @@ function step2_buildDashboardCharts() {
   // Data bersumber dari B70:C86 (Row 70 adalah header: 'Area Manager' & 'Total Omzet')
   const chartAM = dashSheet.newChart()
     .setChartType(Charts.ChartType.PIE)
-    .addRange(dashSheet.getRange('B70:C86'))
+    .addRange(dashSheet.getRange('B80:C96'))
     .setNumHeaders(1)
     .setPosition(11, 2, 0, 0) // Baris 11, Kolom B
     .setOption('title', '📊 GRAFIK 1: KONTRIBUSI PENJUALAN PER AREA MANAGER')
@@ -442,7 +446,7 @@ function step2_buildDashboardCharts() {
   // Data bersumber dari E70:F80 (Row 70 adalah header: 'Tanggal Transaksi' & 'Total Omzet')
   const chartTren = dashSheet.newChart()
     .setChartType(Charts.ChartType.COLUMN)
-    .addRange(dashSheet.getRange('E70:F80'))
+    .addRange(dashSheet.getRange('E80:F110'))
     .setNumHeaders(1)
     .setPosition(11, 8, 0, 0) // Baris 11, Kolom H
     .setOption('title', '📈 GRAFIK 2: TREN PENJUALAN HARIAN (TOTAL OMZET RP)')
